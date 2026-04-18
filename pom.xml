@@ -54,6 +54,7 @@
 		<module>spring-ai-spring-boot-docker-compose</module>
 		<module>spring-ai-spring-boot-testcontainers</module>
 		<module>spring-ai-spring-cloud-bindings</module>
+		<module>spring-ai-spring-cloud-discovery</module>
 
 		<module>document-readers/jsoup-reader</module>
 		<module>document-readers/markdown-reader</module>

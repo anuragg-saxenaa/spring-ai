@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: spring-ai-discovery-demo
+
+  # Eureka configuration (example)
+  cloud:
+    discovery:
+      enabled: true
+    loadbalancer:
+      ribbon:
+        enabled: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    # Register this service as both an MCP client and A2A agent
+    metadata:
+      type: a2a-agent
+      role: orchestrator
+    prefer-ip-address: true
+
+# Register as an MCP server so other clients can discover us
+spring:
+  ai:
+    mcp:
+      server:
+        enabled: true
+        registration:
+          name: discovery-demo-mcp
+          type: mcp-server
+          domain: orchestration
+
+# Spring AI Discovery configuration
+spring.ai.discovery:
+  enabled: true
+  # MCP servers register with type=mcp-server
+  mcp-metadata-key: type
+  mcp-metadata-value: mcp-server
+  mcp-endpoint-path: /mcp
+  # A2A agents register with type=a2a-agent
+  agent-metadata-key: type
+  agent-metadata-value: a2a-agent
+  a2a-endpoint-path: /a2a
+  # Refresh every 30 seconds
+  refresh-interval: 30s
+  circuit-breaker:
+    enabled: true
+    failure-rate-threshold: 50
+    sliding-window-size: 10
+    minimum-number-of-calls: 5
+  retry:
+    enabled: true
+    max-attempts: 3
+    initial-interval: 100ms
+    multiplier: 2.0
+
+# Expose actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    org.springframework.ai.discovery: DEBUG
