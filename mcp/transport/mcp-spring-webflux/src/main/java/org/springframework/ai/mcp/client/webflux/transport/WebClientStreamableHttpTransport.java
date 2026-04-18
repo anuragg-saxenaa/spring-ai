@@ -379,23 +379,29 @@ public final class WebClientStreamableHttpTransport implements McpClientTranspor
 						}
 						return this.extractError(response, sessionRepresentation);
 					}
-				}))
-				.flatMap(jsonRpcMessage -> this.handler.get().apply(Mono.just(jsonRpcMessage)))
-				.onErrorComplete(t -> {
+				})).flatMap(jsonRpcMessage -> this.handler.get().apply(Mono.just(jsonRpcMessage))).onErrorResume(t -> {
 					// handle the error first
 					this.handleException(t);
-					// inform the caller of sendMessage
-					sink.error(t);
-					return true;
-				})
-				.doFinally(s -> {
+					// For requests (not notifications), emit a synthetic JSONRPC error so
+					// pendingResponses in McpClientSession resolve immediately instead of
+					// hanging for requestTimeout (300s).
+					// For notifications, silently drop the error.
+					String requestId = (String) getRequestId(message);
+					if (requestId != null) {
+						McpSchema.JSONRPCResponse errorResponse = new McpSchema.JSONRPCResponse(
+								McpSchema.JSONRPC_VERSION, requestId, null,
+								new McpSchema.JSONRPCResponse.JSONRPCError(McpSchema.ErrorCodes.INTERNAL_ERROR,
+										"Body-level error in stream: " + t.getMessage(), null));
+						return this.handler.get().apply(Mono.just(errorResponse)).doFinally(sig -> sink.success());
+					}
+					sink.success();
+					return Mono.empty();
+				}).doFinally(s -> {
 					@Nullable Disposable ref = disposableRef.getAndSet(null);
 					if (ref != null) {
 						transportSession.removeConnection(ref);
 					}
-				})
-				.contextWrite(sink.contextView())
-				.subscribe();
+				}).contextWrite(sink.contextView()).subscribe();
 			disposableRef.set(connection);
 			transportSession.addConnection(connection);
 		});
@@ -465,6 +471,19 @@ public final class WebClientStreamableHttpTransport implements McpClientTranspor
 
 	private static String sessionIdOrPlaceholder(McpTransportSession<?> transportSession) {
 		return transportSession.sessionId().orElse(MISSING_SESSION_ID);
+	}
+
+	/**
+	 * Extract the request ID from a JSON-RPC message, or null if it's a notification.
+	 */
+	private static @Nullable Object getRequestId(McpSchema.JSONRPCMessage message) {
+		if (message instanceof McpSchema.JSONRPCRequest request) {
+			return request.id();
+		}
+		else if (message instanceof McpSchema.JSONRPCResponse response) {
+			return response.id();
+		}
+		return null;
 	}
 
 	private Flux<McpSchema.JSONRPCMessage> directResponseFlux(McpSchema.JSONRPCMessage sentMessage,
