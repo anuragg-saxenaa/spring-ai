@@ -455,9 +455,11 @@ public final class OpenAiChatModel implements ChatModel {
 								.generations(ToolExecutionResult.buildGenerations(tetoolExecutionResult))
 								.build());
 						}
-						return this.internalStream(
-								new Prompt(tetoolExecutionResult.conversationHistory(), prompt.getOptions()),
-								aggregated);
+						return Flux.concat(
+								Flux.just(aggregated),
+								this.internalStream(
+									new Prompt(tetoolExecutionResult.conversationHistory(), prompt.getOptions()),
+									aggregated));
 					}).subscribeOn(Schedulers.boundedElastic());
 				}
 				return Flux.just(aggregated);
