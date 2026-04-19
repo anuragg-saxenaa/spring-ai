@@ -210,6 +210,17 @@ public interface ChatClient {
 
 		<T extends ChatOptions> ChatClientRequestSpec options(T options);
 
+		/**
+		 * Merges the given options into the existing options.
+		 * <p>
+		 * Only non-null fields from the provided options will override the corresponding
+		 * fields in the existing options. This allows selective overriding of specific
+		 * properties without losing all other auto-configured properties.
+		 * @param options the options to merge
+		 * @return this spec
+		 */
+		ChatClientRequestSpec merge(ChatOptions options);
+
 		ChatClientRequestSpec toolNames(String... toolNames);
 
 		ChatClientRequestSpec tools(Object... toolObjects);
