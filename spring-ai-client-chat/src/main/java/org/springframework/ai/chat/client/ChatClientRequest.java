@@ -37,6 +37,11 @@ public record ChatClientRequest(Prompt prompt, Map<String, Object> context) {
 		Assert.notNull(prompt, "prompt cannot be null");
 		Assert.notNull(context, "context cannot be null");
 		Assert.noNullElements(context.keySet(), "context keys cannot be null");
+		for (Map.Entry<String, @Nullable Object> entry : context.entrySet()) {
+			if (entry.getValue() == null) {
+				throw new IllegalArgumentException("context value for key '" + entry.getKey() + "' cannot be null");
+			}
+		}
 	}
 
 	public ChatClientRequest copy() {
