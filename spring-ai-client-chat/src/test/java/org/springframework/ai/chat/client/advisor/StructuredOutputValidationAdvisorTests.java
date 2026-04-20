@@ -396,7 +396,7 @@ public class StructuredOutputValidationAdvisorTests {
 
 		ChatClientRequest request = createMockRequest();
 		ChatResponse chatResponse = mock(ChatResponse.class);
-		when(chatResponse.getResult()).thenReturn(null);
+		when(chatResponse.getResults()).thenReturn(List.of());
 		ChatClientResponse nullResultResponse = mock(ChatClientResponse.class);
 		when(nullResultResponse.chatResponse()).thenReturn(chatResponse);
 
@@ -1043,6 +1043,156 @@ public class StructuredOutputValidationAdvisorTests {
 		when(response.chatResponse()).thenReturn(chatResponse);
 
 		return response;
+	}
+
+	private ChatClientResponse createMockResponseWithMultipleResults(List<String> jsonOutputs) {
+		List<Generation> generations = jsonOutputs.stream()
+			.map(json -> new Generation(new AssistantMessage(json)))
+			.toList();
+		ChatResponse chatResponse = new ChatResponse(generations);
+
+		ChatClientResponse response = mock(ChatClientResponse.class);
+		when(response.chatResponse()).thenReturn(chatResponse);
+
+		return response;
+	}
+
+	@Test
+	void testValidationWithMultipleResultsSecondInvalid() {
+		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
+			.outputType(new TypeReference<Person>() {
+			})
+			.maxRepeatAttempts(1)
+			.build();
+
+		ChatClientRequest request = createMockRequest();
+		// First result is valid, second is invalid (missing required 'age' field)
+		String validJson = "{\"name\":\"John Doe\",\"age\":30}";
+		String invalidJson = "{\"name\":\"Jane Doe\"}";
+		String correctedJson = "{\"name\":\"Jane Doe\",\"age\":25}";
+
+		ChatClientResponse multiResultInvalidResponse = createMockResponseWithMultipleResults(
+				List.of(validJson, invalidJson));
+		ChatClientResponse validResponse = createMockResponse(correctedJson);
+
+		int[] callCount = { 0 };
+		CallAdvisor terminalAdvisor = new CallAdvisor() {
+			@Override
+			public String getName() {
+				return "terminal";
+			}
+
+			@Override
+			public int getOrder() {
+				return Ordered.LOWEST_PRECEDENCE;
+			}
+
+			@Override
+			public ChatClientResponse adviseCall(ChatClientRequest req, CallAdvisorChain chain) {
+				callCount[0]++;
+				return callCount[0] == 1 ? multiResultInvalidResponse : validResponse;
+			}
+		};
+
+		CallAdvisorChain realChain = DefaultAroundAdvisorChain.builder(ObservationRegistry.NOOP)
+			.pushAll(List.of(advisor, terminalAdvisor))
+			.build();
+
+		ChatClientResponse result = realChain.nextCall(request);
+
+		// Validation should have caught the invalid second result and triggered a retry
+		assertThat(result).isEqualTo(validResponse);
+		assertThat(callCount[0]).isEqualTo(2);
+	}
+
+	@Test
+	void testValidationWithMultipleResultsAllValid() {
+		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
+			.outputType(new TypeReference<Person>() {
+			})
+			.maxRepeatAttempts(0)
+			.build();
+
+		ChatClientRequest request = createMockRequest();
+		// Both results are valid
+		String validJson1 = "{\"name\":\"John Doe\",\"age\":30}";
+		String validJson2 = "{\"name\":\"Jane Doe\",\"age\":25}";
+
+		ChatClientResponse multiResultResponse = createMockResponseWithMultipleResults(List.of(validJson1, validJson2));
+
+		CallAdvisor terminalAdvisor = new CallAdvisor() {
+			@Override
+			public String getName() {
+				return "terminal";
+			}
+
+			@Override
+			public int getOrder() {
+				return Ordered.LOWEST_PRECEDENCE;
+			}
+
+			@Override
+			public ChatClientResponse adviseCall(ChatClientRequest req, CallAdvisorChain chain) {
+				return multiResultResponse;
+			}
+		};
+
+		CallAdvisorChain realChain = DefaultAroundAdvisorChain.builder(ObservationRegistry.NOOP)
+			.pushAll(List.of(advisor, terminalAdvisor))
+			.build();
+
+		ChatClientResponse result = realChain.nextCall(request);
+
+		// Both results valid - no retry needed
+		assertThat(result).isEqualTo(multiResultResponse);
+	}
+
+	@Test
+	void testValidationWithMultipleResultsFirstInvalid() {
+		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
+			.outputType(new TypeReference<Person>() {
+			})
+			.maxRepeatAttempts(1)
+			.build();
+
+		ChatClientRequest request = createMockRequest();
+		// First result is invalid, second is valid
+		String invalidJson = "{\"name\":\"John\"}";
+		String validJson1 = "{\"name\":\"Jane Doe\",\"age\":25}";
+		String validJson2 = "{\"name\":\"Bob Smith\",\"age\":40}";
+
+		ChatClientResponse multiResultInvalidFirst = createMockResponseWithMultipleResults(
+				List.of(invalidJson, validJson1));
+		ChatClientResponse allValidResponse = createMockResponseWithMultipleResults(List.of(validJson2, validJson1));
+
+		int[] callCount = { 0 };
+		CallAdvisor terminalAdvisor = new CallAdvisor() {
+			@Override
+			public String getName() {
+				return "terminal";
+			}
+
+			@Override
+			public int getOrder() {
+				return Ordered.LOWEST_PRECEDENCE;
+			}
+
+			@Override
+			public ChatClientResponse adviseCall(ChatClientRequest req, CallAdvisorChain chain) {
+				callCount[0]++;
+				return callCount[0] == 1 ? multiResultInvalidFirst : allValidResponse;
+			}
+		};
+
+		CallAdvisorChain realChain = DefaultAroundAdvisorChain.builder(ObservationRegistry.NOOP)
+			.pushAll(List.of(advisor, terminalAdvisor))
+			.build();
+
+		ChatClientResponse result = realChain.nextCall(request);
+
+		// Validation should catch invalid first result and trigger retry
+		assertThat(result).isEqualTo(allValidResponse);
+		assertThat(callCount[0]).isEqualTo(2);
 	}
 
 	// Test DTOs
