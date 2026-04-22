@@ -494,6 +494,217 @@ class DefaultChatClientUtilsTests {
 		assertThat(result.context()).containsAllEntriesOf(advisorParams);
 	}
 
+	@Test
+	void whenDefaultOptionsAndCallTimeOptionsAreProvidedThenCallTimeOverrides() {
+		// Model default: temperature=0.5, maxTokens=100
+		ChatOptions modelDefaults = ChatOptions.builder().temperature(0.5).maxTokens(100).build();
+
+		// Call-time override: temperature=0.8 (maxTokens should inherit from defaults)
+		ChatOptions callTimeOptions = ChatOptions.builder().temperature(0.8).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions()).isNotNull();
+		// Call-time temperature should win
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.8);
+		// Default maxTokens should be inherited
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(100);
+	}
+
+	@Test
+	void whenDefaultOptionsAndCallTimeOptionsPartialOverrideThenBothApply() {
+		// Model default: temperature=0.5, maxTokens=100, model="gpt-4"
+		ChatOptions modelDefaults = ChatOptions.builder().temperature(0.5).maxTokens(100).model("gpt-4").build();
+
+		// Call-time override: only maxTokens=200 (temperature and model should inherit)
+		ChatOptions callTimeOptions = ChatOptions.builder().maxTokens(200).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		// Call-time maxTokens should win
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(200);
+		// Default temperature and model should be inherited
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.5);
+		assertThat(result.prompt().getOptions().getModel()).isEqualTo("gpt-4");
+	}
+
+	@Test
+	void whenOnlyDefaultOptionsExistThenTheyAreUsed() {
+		ChatOptions modelDefaults = ChatOptions.builder().temperature(0.7).maxTokens(50).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello");
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.7);
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(50);
+	}
+
+	@Test
+	void whenOnlyCallTimeOptionsExistThenTheyAreUsed() {
+		ChatOptions callTimeOptions = ChatOptions.builder().temperature(0.9).topP(0.95).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(ChatOptions.builder().build());
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.9);
+		assertThat(result.prompt().getOptions().getTopP()).isEqualTo(0.95);
+	}
+
+	@Test
+	void whenNeitherOptionsExistThenResultIsEmpty() {
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(ChatOptions.builder().build());
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello");
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions()).isNotNull();
+	}
+
+	@Test
+	void whenCallTimeOptionsNullOutDefaultThenNullWins() {
+		// Model default has temperature=0.5
+		ChatOptions modelDefaults = ChatOptions.builder().temperature(0.5).build();
+		// Call-time customizer does not set temperature (null), so default should apply
+		ChatOptions callTimeOptions = ChatOptions.builder().maxTokens(200).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		// Default temperature should be inherited when call-time doesn't set it
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.5);
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(200);
+	}
+
+	@Test
+	void whenToolCallingOptionsWithDefaultsAndCallTimeOverrideThenMerged() {
+		// Model default ToolCallingChatOptions with toolName defaultTool
+		ToolCallingChatOptions modelDefaults = ToolCallingChatOptions.builder()
+			.temperature(0.5)
+			.toolNames(Set.of("defaultTool"))
+			.build();
+
+		// Call-time ToolCallingChatOptions overrides toolName and temperature
+		ToolCallingChatOptions callTimeOptions = ToolCallingChatOptions.builder()
+			.temperature(0.8)
+			.toolNames(Set.of("runtimeTool"))
+			.build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions()).isInstanceOf(ToolCallingChatOptions.class);
+		ToolCallingChatOptions resultOptions = (ToolCallingChatOptions) result.prompt().getOptions();
+		// Call-time values override defaults
+		assertThat(resultOptions.getTemperature()).isEqualTo(0.8);
+		assertThat(resultOptions.getToolNames()).containsExactly("runtimeTool");
+	}
+
+	@Test
+	void whenDefaultOptionsBeanAndCallTimeOptionsBothSetSameFieldThenCallTimeWins() {
+		// This is the classic bug scenario: bean sets temperature=0.1,
+		// call-time sets temperature=0.9. Call-time MUST win.
+		ChatOptions modelDefaults = ChatOptions.builder().temperature(0.1).maxTokens(10).build();
+		ChatOptions callTimeOptions = ChatOptions.builder().temperature(0.9).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(0.9);
+		// Unset fields from call-time should still inherit from defaults
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(10);
+	}
+
+	@Test
+	void whenDefaultOptionsBeanSetsAllFieldsAndCallTimeSetsPartialThenPartialOverrides() {
+		// Model bean configures full defaults
+		ChatOptions modelDefaults = ChatOptions.builder()
+			.model("gpt-4o")
+			.temperature(0.3)
+			.maxTokens(500)
+			.topP(0.9)
+			.frequencyPenalty(0.5)
+			.presencePenalty(0.5)
+			.stopSequences(List.of("STOP"))
+			.topK(10)
+			.build();
+
+		// User only overrides temperature at call time
+		ChatOptions callTimeOptions = ChatOptions.builder().temperature(1.0).build();
+
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions()).thenReturn(modelDefaults);
+		DefaultChatClient.DefaultChatClientRequestSpec inputRequest = (DefaultChatClient.DefaultChatClientRequestSpec) ChatClient
+			.create(chatModel)
+			.prompt()
+			.user("Hello")
+			.options(callTimeOptions.mutate());
+
+		ChatClientRequest result = DefaultChatClientUtils.toChatClientRequest(inputRequest);
+
+		assertThat(result.prompt().getOptions().getTemperature()).isEqualTo(1.0); // overridden
+		assertThat(result.prompt().getOptions().getModel()).isEqualTo("gpt-4o"); // inherited
+		assertThat(result.prompt().getOptions().getMaxTokens()).isEqualTo(500); // inherited
+		assertThat(result.prompt().getOptions().getTopP()).isEqualTo(0.9); // inherited
+		assertThat(result.prompt().getOptions().getFrequencyPenalty()).isEqualTo(0.5); // inherited
+		assertThat(result.prompt().getOptions().getPresencePenalty()).isEqualTo(0.5); // inherited
+		assertThat(result.prompt().getOptions().getStopSequences()).containsExactly("STOP"); // inherited
+		assertThat(result.prompt().getOptions().getTopK()).isEqualTo(10); // inherited
+	}
+
 	static class TestToolCallback implements ToolCallback {
 
 		private final ToolDefinition toolDefinition;

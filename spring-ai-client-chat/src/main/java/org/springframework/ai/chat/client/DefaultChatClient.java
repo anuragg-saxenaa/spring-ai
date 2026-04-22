@@ -870,7 +870,13 @@ public class DefaultChatClient implements ChatClient {
 		@Override
 		public <B extends ChatOptions.Builder<?>> ChatClientRequestSpec options(B customizer) {
 			Assert.notNull(customizer, "customizer cannot be null");
-			this.optionsCustomizer = customizer;
+			if (this.optionsCustomizer != null) {
+				// Merge with existing customizer instead of replacing
+				this.optionsCustomizer.combineWith(customizer);
+			}
+			else {
+				this.optionsCustomizer = customizer;
+			}
 			return this;
 		}
 

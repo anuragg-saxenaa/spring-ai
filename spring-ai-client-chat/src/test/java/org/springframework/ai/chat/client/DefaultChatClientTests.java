@@ -2385,6 +2385,102 @@ class DefaultChatClientTests {
 		verify(provider, times(1)).getToolCallbacks();
 	}
 
+	// Options Merge Tests for Issue #5821
+
+	@Test
+	void whenOptionsSetMultipleTimesThenMergedNotReplaced() {
+		ChatModel chatModel = mockChatModel();
+		ChatClient chatClient = new DefaultChatClientBuilder(chatModel).build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt()
+			.options(ChatOptions.builder().model("model-a").temperature(0.5))
+			.options(ChatOptions.builder().maxTokens(100));
+
+		// Verify both options are merged into the customizer
+		ChatOptions builtOptions = spec.getOptionsCustomizer().build();
+		assertThat(builtOptions.getModel()).isEqualTo("model-a");
+		assertThat(builtOptions.getTemperature()).isEqualTo(0.5);
+		assertThat(builtOptions.getMaxTokens()).isEqualTo(100);
+	}
+
+	@Test
+	void whenOptionsOverrideModelThenPreservesOtherProperties() {
+		ChatModel chatModel = mockChatModel();
+		ChatClient chatClient = new DefaultChatClientBuilder(chatModel).build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt()
+			.options(ChatOptions.builder().model("model-a").temperature(0.5).maxTokens(100))
+			.options(ChatOptions.builder().model("model-b"));
+
+		ChatOptions builtOptions = spec.getOptionsCustomizer().build();
+		// model should be overridden, but temperature and maxTokens should be preserved
+		assertThat(builtOptions.getModel()).isEqualTo("model-b");
+		assertThat(builtOptions.getTemperature()).isEqualTo(0.5);
+		assertThat(builtOptions.getMaxTokens()).isEqualTo(100);
+	}
+
+	@Test
+	void whenOptionsSetWithNullFieldsThenDoesNotWipeExistingValues() {
+		ChatModel chatModel = mockChatModel();
+		ChatClient chatClient = new DefaultChatClientBuilder(chatModel).build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt()
+			.options(ChatOptions.builder().model("model-a").temperature(0.7).topP(0.9))
+			.options(ChatOptions.builder().maxTokens(50)); // Only setting maxTokens,
+															// other fields are
+		// null
+
+		ChatOptions builtOptions = spec.getOptionsCustomizer().build();
+		// model and temperature from first call should be preserved
+		assertThat(builtOptions.getModel()).isEqualTo("model-a");
+		assertThat(builtOptions.getTemperature()).isEqualTo(0.7);
+		assertThat(builtOptions.getTopP()).isEqualTo(0.9);
+		assertThat(builtOptions.getMaxTokens()).isEqualTo(50);
+	}
+
+	@Test
+	void whenOptionsConflictThenLastWins() {
+		ChatModel chatModel = mockChatModel();
+		ChatClient chatClient = new DefaultChatClientBuilder(chatModel).build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt()
+			.options(ChatOptions.builder().temperature(0.5))
+			.options(ChatOptions.builder().temperature(0.9));
+
+		ChatOptions builtOptions = spec.getOptionsCustomizer().build();
+		assertThat(builtOptions.getTemperature()).isEqualTo(0.9);
+	}
+
+	@Test
+	void whenDefaultOptionsSetThenOptionsOverride() {
+		// Test that call-time options merge with defaultOptions (from
+		// ChatModel.getDefaultOptions())
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getDefaultOptions())
+			.thenReturn(ChatOptions.builder().model("default-model").temperature(0.5).maxTokens(200).build());
+
+		ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+		given(chatModel.call(promptCaptor.capture()))
+			.willReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("response")))));
+
+		ChatClient chatClient = new DefaultChatClientBuilder(chatModel).build();
+		chatClient.prompt().user("test").options(ChatOptions.builder().model("override-model").topP(0.8)).call();
+
+		Prompt capturedPrompt = promptCaptor.getValue();
+		ChatOptions finalOptions = capturedPrompt.getOptions();
+
+		// Call-time model should override, but temperature and maxTokens from default
+		// should be preserved
+		assertThat(finalOptions.getModel()).isEqualTo("override-model");
+		assertThat(finalOptions.getTemperature()).isEqualTo(0.5);
+		assertThat(finalOptions.getMaxTokens()).isEqualTo(200);
+		assertThat(finalOptions.getTopP()).isEqualTo(0.8);
+	}
+
 	record Person(String name) {
 	}
 

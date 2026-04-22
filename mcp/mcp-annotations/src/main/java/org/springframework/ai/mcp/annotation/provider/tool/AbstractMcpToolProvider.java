@@ -17,7 +17,9 @@
 package org.springframework.ai.mcp.annotation.provider.tool;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -44,6 +46,40 @@ public abstract class AbstractMcpToolProvider {
 
 	protected Method[] doGetClassMethods(Object bean) {
 		return bean.getClass().getDeclaredMethods();
+	}
+
+	/**
+	 * Returns all methods from the given object's class hierarchy, including interface
+	 * default methods that are annotated with {@link McpTool}. This is critical for HTTP
+	 * Service Client proxies created by {@code @ImportHttpServices} where the proxy
+	 * implements an interface with {@link McpTool}-annotated methods.
+	 * @param bean the object to inspect
+	 * @return all relevant methods including interface-declared ones
+	 */
+	protected Method[] doGetAllMethodsFromHierarchy(Object bean) {
+		Class<?> beanClass = bean.getClass();
+
+		// Start with class declared methods
+		Stream<Method> classMethods = Arrays.stream(beanClass.getDeclaredMethods());
+
+		// Add methods from all interfaces implemented (recursively)
+		Stream<Method> interfaceMethods = collectInterfaceMethods(beanClass);
+
+		return Stream.concat(classMethods, interfaceMethods).toArray(Method[]::new);
+	}
+
+	private Stream<Method> collectInterfaceMethods(Class<?> clazz) {
+		Stream<Method> methods = Stream.empty();
+		for (Class<?> iface : clazz.getInterfaces()) {
+			methods = Stream.concat(methods, Arrays.stream(iface.getDeclaredMethods()));
+			// Recursively get methods from super-interfaces
+			methods = Stream.concat(methods, collectInterfaceMethods(iface));
+		}
+		// Also check superclass
+		if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
+			methods = Stream.concat(methods, collectInterfaceMethods(clazz.getSuperclass()));
+		}
+		return methods;
 	}
 
 	protected McpTool doGetMcpToolAnnotation(Method method) {

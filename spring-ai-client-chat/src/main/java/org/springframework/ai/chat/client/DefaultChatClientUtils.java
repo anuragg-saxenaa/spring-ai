@@ -100,9 +100,17 @@ final class DefaultChatClientUtils {
 		 * ==========* OPTIONS * ==========
 		 */
 
-		ChatOptions.Builder<?> builder = inputRequest.getChatModel().getDefaultOptions().mutate();
+		ChatOptions.Builder<?> builder;
 		if (inputRequest.getOptionsCustomizer() != null) {
-			builder = builder.combineWith(inputRequest.getOptionsCustomizer());
+			// Call-time options win; start from them and fill in nulls from model
+			// defaults.
+			builder = inputRequest.getChatModel()
+				.getDefaultOptions()
+				.mutate()
+				.combineWith(inputRequest.getOptionsCustomizer().clone());
+		}
+		else {
+			builder = inputRequest.getChatModel().getDefaultOptions().mutate();
 		}
 
 		if (builder instanceof ToolCallingChatOptions.Builder<?> tbuilder) {

@@ -78,7 +78,7 @@ public class SyncMcpToolListChangedProvider {
 	public List<SyncToolListChangedSpecification> getToolListChangedSpecifications() {
 
 		List<SyncToolListChangedSpecification> toolListChangedConsumers = this.toolListChangedConsumerObjects.stream()
-			.map(consumerObject -> Stream.of(doGetClassMethods(consumerObject))
+			.map(consumerObject -> Stream.of(doGetAllMethodsFromHierarchy(consumerObject))
 				.filter(method -> method.isAnnotationPresent(McpToolListChanged.class))
 				.filter(McpPredicates.filterReactiveReturnTypeMethod())
 				.sorted((m1, m2) -> m1.getName().compareTo(m2.getName()))
@@ -108,6 +108,33 @@ public class SyncMcpToolListChangedProvider {
 	 */
 	protected Method[] doGetClassMethods(Object bean) {
 		return bean.getClass().getDeclaredMethods();
+	}
+
+	protected Method[] doGetAllMethodsFromHierarchy(Object bean) {
+		Class<?> beanClass = bean.getClass();
+
+		// Start with class declared methods
+		java.util.stream.Stream<java.lang.reflect.Method> classMethods = java.util.Arrays
+			.stream(beanClass.getDeclaredMethods());
+
+		// Add methods from all interfaces implemented (recursively)
+		java.util.stream.Stream<java.lang.reflect.Method> interfaceMethods = collectInterfaceMethods(beanClass);
+
+		return java.util.stream.Stream.concat(classMethods, interfaceMethods).toArray(java.lang.reflect.Method[]::new);
+	}
+
+	private java.util.stream.Stream<java.lang.reflect.Method> collectInterfaceMethods(Class<?> clazz) {
+		java.util.stream.Stream<java.lang.reflect.Method> methods = java.util.stream.Stream.empty();
+		for (Class<?> iface : clazz.getInterfaces()) {
+			methods = java.util.stream.Stream.concat(methods, java.util.Arrays.stream(iface.getDeclaredMethods()));
+			// Recursively get methods from super-interfaces
+			methods = java.util.stream.Stream.concat(methods, collectInterfaceMethods(iface));
+		}
+		// Also check superclass
+		if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
+			methods = java.util.stream.Stream.concat(methods, collectInterfaceMethods(clazz.getSuperclass()));
+		}
+		return methods;
 	}
 
 }
