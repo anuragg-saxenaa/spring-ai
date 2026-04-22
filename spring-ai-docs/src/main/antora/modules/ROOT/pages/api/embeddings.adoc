@@ -174,7 +174,6 @@ public class Embedding implements ModelResult<float[]> {
 Internally the various `EmbeddingModel` implementations use different low-level libraries and APIs to perform the embedding tasks. The following are some of the available implementations of the `EmbeddingModel` implementations:
 
 * xref:api/embeddings/openai-embeddings.adoc[Spring AI OpenAI Embeddings]
-* xref:api/embeddings/azure-openai-embeddings.adoc[Spring AI Azure OpenAI Embeddings]
 * xref:api/embeddings/ollama-embeddings.adoc[Spring AI Ollama Embeddings]
 * xref:api/embeddings/onnx.adoc[Spring AI Transformers (ONNX) Embeddings]
 * xref:api/embeddings/postgresml-embeddings.adoc[Spring AI PostgresML Embeddings]

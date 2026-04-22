@@ -11,6 +11,21 @@ Starting from version `2.0.0-M5`, Spring AI uses the official `openai-java` SDK 
 The transition is seamless, and **no breaking changes are expected** for existing users of the `spring-ai-openai` module.
 All properties (with the `spring.ai.openai.*` prefix), builders, and options remain fully intact. The existing `extraBody` configuration parameter transparently maps to the underlying `additionalBodyProperties` in the `openai-java` SDK.
 
+=== Removed: spring-ai-azure-openai Module
+
+The `spring-ai-azure-openai` module (and its associated Spring Boot starter `spring-ai-starter-model-azure-openai` and auto-configuration `spring-ai-autoconfigure-model-azure-openai`) have been **removed** from Spring AI as of version `2.0.0-M5`.
+
+This module was built on the Azure OpenAI SDK which is being replaced by OpenAI's official `openai-java` SDK. The `spring-ai-openai` module already supports Azure OpenAI endpoints through the `endpoint` property and `AzureIdentityCredentialProvider`, providing equivalent functionality.
+
+Users of the removed modules should:
+
+1. Migrate to the `spring-ai-openai` module — it supports Azure OpenAI endpoints via `spring.ai.openai.base-url` and `spring.ai.openai.api-key`
+2. Use `spring.ai.openai.azure` properties for Azure-specific configuration (e.g., `spring.ai.openai.azure.chat.options.deploymentName`)
+3. Replace `spring-ai-starter-model-azure-openai` with `spring-ai-starter-model-openai`
+
+
+The integration tests from the removed module have been preserved in `spring-ai-azure-integration-tests` for users who need to test against Azure OpenAI endpoints.
+
 === ChatOptions Handling
 Users can interact with ChatModels in two ways:
 

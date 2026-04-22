@@ -37,6 +37,7 @@
 		<module>spring-ai-client-chat</module>
 		<module>spring-ai-model</module>
 		<module>spring-ai-test</module>
+		<module>spring-ai-azure-integration-tests</module>
 		<module>spring-ai-vector-store</module>
 		<module>spring-ai-rag</module>
 		<module>advisors/spring-ai-advisors-vector-store</module>
@@ -106,7 +107,7 @@
 		<module>auto-configurations/models/image/observation/spring-ai-autoconfigure-model-image-observation</module>
 
 		<module>auto-configurations/models/spring-ai-autoconfigure-model-anthropic</module>
-		<module>auto-configurations/models/spring-ai-autoconfigure-model-azure-openai</module>
+
 		<module>auto-configurations/models/spring-ai-autoconfigure-model-bedrock-ai</module>
 		<module>auto-configurations/models/spring-ai-autoconfigure-model-elevenlabs</module>
 		<module>auto-configurations/models/spring-ai-autoconfigure-model-openai</module>
@@ -178,7 +179,7 @@
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-vector-store-s3</module>
 
 		<module>models/spring-ai-anthropic</module>
-		<module>models/spring-ai-azure-openai</module>
+
 		<module>models/spring-ai-bedrock</module>
 		<module>models/spring-ai-bedrock-converse</module>
 		<module>models/spring-ai-elevenlabs</module>
@@ -195,7 +196,7 @@
 		<module>models/spring-ai-deepseek</module>
 
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-anthropic</module>
-		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-azure-openai</module>
+
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-bedrock</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-bedrock-converse</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-google-genai</module>
@@ -858,7 +859,6 @@
 
 								<!-- Models -->
 								<exclude>org.springframework.ai.anthropic/**/*IT.java</exclude>
-								<exclude>org.springframework.ai.azure.openai/**/*IT.java</exclude>
 								<exclude>org.springframework.ai.bedrock/**/*IT.java</exclude>
 								<exclude>org.springframework.ai.bedrock.converse/**/*IT.java</exclude>
 								<exclude>org.springframework.ai.elevenlabs/**/*IT.java</exclude>
@@ -902,7 +902,6 @@
 								 <!-- <exclude>org.springframework.ai.autoconfigure/**/**IT.java</exclude> -->
 
 								 <exclude>org.springframework.ai.autoconfigure.anthropic/**/**IT.java</exclude>
-								 <exclude>org.springframework.ai.autoconfigure.azure/**/**IT.java</exclude>
 								 <exclude>org.springframework.ai.autoconfigure.bedrock/**/**IT.java</exclude>
 								 <exclude>org.springframework.ai.autoconfigure.huggingface/**/**IT.java</exclude>
 
