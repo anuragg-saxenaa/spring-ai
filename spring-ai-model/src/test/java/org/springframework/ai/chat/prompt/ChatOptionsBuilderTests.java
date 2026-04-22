@@ -242,4 +242,18 @@ public class ChatOptionsBuilderTests {
 		assertThat(copy.getStopSequences()).containsExactly("original");
 	}
 
+	@Test
+	void combineWithShouldDefensivelyCopyStopSequences() {
+		// Given
+		DefaultChatOptionsBuilder<?> sourceBuilder = (DefaultChatOptionsBuilder<?>) this.builder
+			.stopSequences(List.of("STOP"));
+		DefaultChatOptionsBuilder<?> targetBuilder = (DefaultChatOptionsBuilder<?>) ChatOptions.builder();
+
+		// When
+		targetBuilder.combineWith(sourceBuilder);
+
+		// Then
+		assertThat(targetBuilder.stopSequences).isNotSameAs(sourceBuilder.stopSequences);
+	}
+
 }
