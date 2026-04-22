@@ -401,7 +401,11 @@ public final class OpenAiChatModel implements ChatModel {
 							for (int i = 0; i < am.getToolCalls().size() && i < deltaCalls.size(); i++) {
 								AssistantMessage.ToolCall tc = am.getToolCalls().get(i);
 								ChatCompletionChunk.Choice.Delta.ToolCall dtc = deltaCalls.get(i);
-								String key = chunkChoice.index() + "-" + dtc.index();
+								// Use tc.id() as key to ensure chunks with the same tool
+								// call ID are merged
+								// This fixes issue #5806: streaming tool call merge bug
+								// with empty IDs
+								String key = tc.id();
 								ToolCallBuilder toolCallBuilder = builders.computeIfAbsent(key,
 										k -> new ToolCallBuilder());
 								toolCallBuilder.merge(tc);
@@ -455,11 +459,10 @@ public final class OpenAiChatModel implements ChatModel {
 								.generations(ToolExecutionResult.buildGenerations(tetoolExecutionResult))
 								.build());
 						}
-						return Flux.concat(
-								Flux.just(aggregated),
+						return Flux.concat(Flux.just(aggregated),
 								this.internalStream(
-									new Prompt(tetoolExecutionResult.conversationHistory(), prompt.getOptions()),
-									aggregated));
+										new Prompt(tetoolExecutionResult.conversationHistory(), prompt.getOptions()),
+										aggregated));
 					}).subscribeOn(Schedulers.boundedElastic());
 				}
 				return Flux.just(aggregated);
