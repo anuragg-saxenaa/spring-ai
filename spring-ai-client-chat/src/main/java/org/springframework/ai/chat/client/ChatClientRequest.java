@@ -82,6 +82,11 @@ public record ChatClientRequest(Prompt prompt, Map<String, @Nullable Object> con
 
 		public ChatClientRequest build() {
 			Assert.state(this.prompt != null, "prompt cannot be null");
+			for (Map.Entry<String, @Nullable Object> entry : this.context.entrySet()) {
+				if (entry.getValue() == null) {
+					throw new IllegalArgumentException("context values must not be null");
+				}
+			}
 			return new ChatClientRequest(this.prompt, this.context);
 		}
 
