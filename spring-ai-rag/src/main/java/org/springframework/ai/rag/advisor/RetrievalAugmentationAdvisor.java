@@ -63,6 +63,13 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 
 	public static final String DOCUMENT_CONTEXT = "rag_document_context";
 
+	/**
+	 * Context key used to mark that the current request is a tool-execution sub-call.
+	 * When present with value {@code true}, the advisor can skip RAG processing to avoid
+	 * redundant query rewriting, vector store retrieval, and reranking.
+	 */
+	public static final String TOOL_EXECUTION_CALL = "spring.ai.tool.execution.call";
+
 	private final List<QueryTransformer> queryTransformers;
 
 	private final @Nullable QueryExpander queryExpander;
@@ -81,11 +88,19 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 
 	private final int order;
 
+	/**
+	 * When true, the advisor will skip RAG processing during tool-execution sub-calls.
+	 * This prevents redundant query rewriting, vector store retrieval, and reranking when
+	 * the LLM makes intermediate tool calls. Defaults to {@code false} for backward
+	 * compatibility.
+	 */
+	private final boolean skipDuringToolExecution;
+
 	private RetrievalAugmentationAdvisor(@Nullable List<QueryTransformer> queryTransformers,
 			@Nullable QueryExpander queryExpander, DocumentRetriever documentRetriever,
 			@Nullable DocumentJoiner documentJoiner, @Nullable List<DocumentPostProcessor> documentPostProcessors,
 			@Nullable QueryAugmenter queryAugmenter, @Nullable TaskExecutor taskExecutor, @Nullable Scheduler scheduler,
-			@Nullable Integer order) {
+			@Nullable Integer order, boolean skipDuringToolExecution) {
 		Assert.notNull(documentRetriever, "documentRetriever cannot be null");
 		Assert.noNullElements(queryTransformers, "queryTransformers cannot contain null elements");
 		this.queryTransformers = queryTransformers != null ? queryTransformers : List.of();
@@ -97,6 +112,7 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 		this.taskExecutor = taskExecutor != null ? taskExecutor : buildDefaultTaskExecutor();
 		this.scheduler = scheduler != null ? scheduler : BaseAdvisor.DEFAULT_SCHEDULER;
 		this.order = order != null ? order : 0;
+		this.skipDuringToolExecution = skipDuringToolExecution;
 	}
 
 	public static Builder builder() {
@@ -106,6 +122,11 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 	@Override
 	public ChatClientRequest before(ChatClientRequest chatClientRequest, @Nullable AdvisorChain advisorChain) {
 		Map<String, Object> context = new HashMap<>(chatClientRequest.context());
+
+		// Skip RAG processing if this is a tool-execution sub-call and skipDuringToolExecution is enabled.
+		if (this.skipDuringToolExecution && Boolean.TRUE.equals(context.get(TOOL_EXECUTION_CALL))) {
+			return chatClientRequest;
+		}
 
 		// 0. Create a query from the user text, parameters, and conversation history.
 		String text = chatClientRequest.prompt().getUserMessage().getText();
@@ -220,6 +241,7 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 		private @Nullable Scheduler scheduler;
 
 		private @Nullable Integer order;
+		private boolean skipDuringToolExecution = false;
 
 		private Builder() {
 		}
@@ -285,11 +307,25 @@ public final class RetrievalAugmentationAdvisor implements BaseAdvisor {
 			return this;
 		}
 
+		/**
+		 * When enabled, the advisor will skip RAG processing during tool-execution sub-calls.
+		 * This prevents redundant query rewriting, vector store retrieval, and reranking when
+		 * the LLM makes intermediate tool calls during query augmentation, retrieval, or
+		 * reranking.
+		 * @param skipDuringToolExecution true to skip RAG during tool execution sub-calls
+		 * @return this builder
+		 * @since 1.1.0
+		 */
+		public Builder skipDuringToolExecution(boolean skipDuringToolExecution) {
+			this.skipDuringToolExecution = skipDuringToolExecution;
+			return this;
+		}
+
 		public RetrievalAugmentationAdvisor build() {
 			Assert.state(this.documentRetriever != null, "documentRetriever cannot be null");
 			return new RetrievalAugmentationAdvisor(this.queryTransformers, this.queryExpander, this.documentRetriever,
 					this.documentJoiner, this.documentPostProcessors, this.queryAugmenter, this.taskExecutor,
-					this.scheduler, this.order);
+					this.scheduler, this.order, this.skipDuringToolExecution);
 		}
 
 	}
