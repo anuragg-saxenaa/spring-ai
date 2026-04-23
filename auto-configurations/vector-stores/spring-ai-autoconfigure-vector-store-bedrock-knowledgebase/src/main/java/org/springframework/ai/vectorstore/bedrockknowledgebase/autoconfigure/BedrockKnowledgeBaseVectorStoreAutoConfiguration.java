@@ -18,18 +18,22 @@ package org.springframework.ai.vectorstore.bedrockknowledgebase.autoconfigure;
 
 import java.util.Objects;
 
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockagentruntime.BedrockAgentRuntimeClient;
 import software.amazon.awssdk.services.bedrockagentruntime.BedrockAgentRuntimeClientBuilder;
 
+import org.springframework.ai.model.bedrock.autoconfigure.BedrockAwsConnectionConfiguration;
 import org.springframework.ai.vectorstore.SpringAIVectorStoreTypes;
 import org.springframework.ai.vectorstore.bedrockknowledgebase.BedrockKnowledgeBaseVectorStore;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.util.StringUtils;
 
 /**
@@ -80,34 +84,24 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties(BedrockKnowledgeBaseVectorStoreProperties.class)
 @ConditionalOnProperty(name = SpringAIVectorStoreTypes.TYPE,
 		havingValue = SpringAIVectorStoreTypes.BEDROCK_KNOWLEDGE_BASE, matchIfMissing = true)
+@Import(BedrockAwsConnectionConfiguration.class)
 public class BedrockKnowledgeBaseVectorStoreAutoConfiguration {
 
-	/**
-	 * Creates a BedrockAgentRuntimeClient using default AWS credentials. This bean is
-	 * only created if no other BedrockAgentRuntimeClient is defined.
-	 * @param properties the configuration properties
-	 * @return the BedrockAgentRuntimeClient
-	 */
 	@Bean
 	@ConditionalOnMissingBean
-	BedrockAgentRuntimeClient bedrockAgentRuntimeClient(BedrockKnowledgeBaseVectorStoreProperties properties) {
+	BedrockAgentRuntimeClient bedrockAgentRuntimeClient(BedrockKnowledgeBaseVectorStoreProperties properties,
+			ObjectProvider<AwsCredentialsProvider> credentialsProvider) {
 		BedrockAgentRuntimeClientBuilder builder = BedrockAgentRuntimeClient.builder();
 
 		if (StringUtils.hasText(properties.getRegion())) {
 			builder.region(Region.of(properties.getRegion()));
 		}
 
+		credentialsProvider.ifAvailable(builder::credentialsProvider);
+
 		return builder.build();
 	}
 
-	/**
-	 * Creates a BedrockKnowledgeBaseVectorStore configured from properties. This bean is
-	 * only created if no other BedrockKnowledgeBaseVectorStore is defined and the
-	 * knowledge-base-id property is set.
-	 * @param client the BedrockAgentRuntimeClient
-	 * @param properties the configuration properties
-	 * @return the BedrockKnowledgeBaseVectorStore
-	 */
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = BedrockKnowledgeBaseVectorStoreProperties.CONFIG_PREFIX, name = "knowledge-base-id")
