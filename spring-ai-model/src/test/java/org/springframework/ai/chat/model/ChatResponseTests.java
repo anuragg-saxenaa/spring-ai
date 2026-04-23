@@ -148,4 +148,60 @@ class ChatResponseTests {
 		assertThat(chatResponse.hasToolCalls()).isTrue();
 	}
 
+	// Issue #5167: Stream mode toolCall information loss in tool calling loops
+	@Test
+	void messageAggregatorShouldEmitSeparateObservationsForEachToolCallLoop() {
+		// Simulate two LLM calls in a streaming tool-calling loop.
+		// Call 1 emits text + toolCall; Call 2 emits final text.
+		// After the fix, MessageAggregator should emit TWO observations:
+		// Observation 1: text from Call 1, toolCalls from Call 1
+		// Observation 2: text from Call 2 only (NOT cumulative)
+		MessageAggregator aggregator = new MessageAggregator();
+
+		// Call 1, chunk 1: text without toolCall
+		ChatResponse call1Chunk1 = new ChatResponse(
+				List.of(new Generation(new AssistantMessage("Checking weather... "))));
+
+		// Call 1, final chunk: text + toolCall
+		ToolCall weatherCall = new ToolCall("call_001", "function", "getWeather", "{\"city\":\"Beijing\"}");
+		AssistantMessage call1FinalMsg = AssistantMessage.builder()
+			.content("I will check the weather.")
+			.toolCalls(List.of(weatherCall))
+			.build();
+		ChatResponse call1Final = new ChatResponse(List.of(new Generation(call1FinalMsg)));
+
+		// Call 2, chunk 1: text without toolCall
+		ChatResponse call2Chunk1 = new ChatResponse(List.of(new Generation(new AssistantMessage("Based on "))));
+
+		// Call 2, final chunk: final text (no toolCall)
+		AssistantMessage call2FinalMsg = AssistantMessage.builder()
+			.content("Based on the sunny weather, wear a jacket.")
+			.toolCalls(List.of())
+			.build();
+		ChatResponse call2Final = new ChatResponse(List.of(new Generation(call2FinalMsg)));
+
+		// Stream: Call 1 chunks -> Call 2 chunks (mimics Flux.concat behavior after fix)
+		Flux<ChatResponse> streamingResponse = Flux.just(call1Chunk1, call1Final, call2Chunk1, call2Final);
+
+		List<ChatResponse> emittedObservations = new java.util.ArrayList<>();
+		aggregator.aggregate(streamingResponse, response -> emittedObservations.add(response)).blockLast();
+
+		// After fix: should have exactly 2 observations (one per LLM call)
+		assertThat(emittedObservations).hasSize(2);
+
+		// Observation 1: should have text from Call 1 and the toolCall
+		ChatResponse observation1 = emittedObservations.get(0);
+		AssistantMessage msg1 = observation1.getResult().getOutput();
+		assertThat(msg1.getText()).isEqualTo("Checking weather... I will check the weather.");
+		assertThat(msg1.hasToolCalls()).isTrue();
+		assertThat(msg1.getToolCalls()).hasSize(1);
+		assertThat(msg1.getToolCalls().get(0).name()).isEqualTo("getWeather");
+
+		// Observation 2: should have ONLY Call 2's text (NOT cumulative with Call 1)
+		ChatResponse observation2 = emittedObservations.get(1);
+		AssistantMessage msg2 = observation2.getResult().getOutput();
+		assertThat(msg2.getText()).isEqualTo("Based on the sunny weather, wear a jacket.");
+		assertThat(msg2.hasToolCalls()).isFalse();
+	}
+
 }
