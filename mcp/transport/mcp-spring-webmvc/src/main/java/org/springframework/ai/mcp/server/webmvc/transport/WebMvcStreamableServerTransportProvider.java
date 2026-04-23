@@ -207,6 +207,39 @@ public final class WebMvcStreamableServerTransportProvider implements McpStreama
 		});
 	}
 
+	/**
+	 * Sends a JSON-RPC notification to a specific connected client identified by its
+	 * session ID.
+	 *
+	 * <p>
+	 * This method is used for server-initiated push notifications to an individual client
+	 * over the server's transport channel.
+	 *
+	 * <p>
+	 * <b>Event format (MCP protocol):</b> A JSON-RPC notification message with the given
+	 * method and params, serialized and sent to the client's session.
+	 *
+	 * <h3>Typical use cases:</h3>
+	 * <ul>
+	 * <li>Tool suggestions — push a recommended tool to a specific client based on
+	 * context</li>
+	 * <li>Resource updates — notify a client that a resource it holds has changed</li>
+	 * <li>Progress notifications — long-running operations report back to the client</li>
+	 * <li>Prompt updates — push a system prompt revision to a specific session</li>
+	 * </ul>
+	 *
+	 * <h3>Thread-safety:</h3>
+	 * This method is safe to call from any thread. Session lookups are performed inside
+	 * {@link Mono#defer} to ensure thread-safe access to the {@code sessions} map (a
+	 * {@link ConcurrentHashMap}).
+	 *
+	 * @param sessionId The unique session identifier. Must not be null.
+	 * @param method The JSON-RPC method name (e.g.,
+	 * "notifications/toolSuggested", "notifications/resourcesUpdated")
+	 * @param params The method parameters, typically a typed object or a raw {@code Map}
+	 * @return A {@link Mono} that completes when the notification has been sent. Completes
+	 * immediately with an empty result if the session ID is not found.
+	 */
 	@Override
 	public Mono<Void> notifyClient(String sessionId, String method, Object params) {
 		return Mono.defer(() -> {

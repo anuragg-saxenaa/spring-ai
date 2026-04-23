@@ -230,8 +230,9 @@ public final class WebFluxSseServerTransportProvider implements McpServerTranspo
 	 * </ul>
 	 * @param method The JSON-RPC method to send to clients
 	 * @param params The method parameters to send to clients
-	 * @return A Mono that completes when the message has been sent to all sessions, or
-	 * errors if any session fails to receive the message
+	 * @return A {@link Mono} that completes when the notification has been sent to all
+	 * sessions. Errors from individual sessions are swallowed and logged — the Mono
+	 * completes successfully as long as no fatal error occurs.
 	 */
 	@Override
 	public Mono<Void> notifyClients(String method, Object params) {
@@ -250,10 +251,73 @@ public final class WebFluxSseServerTransportProvider implements McpServerTranspo
 			.then();
 	}
 
-	// FIXME: This javadoc makes claims about using isClosing flag but it's not
-	// actually
-	// doing that.
-
+	/**
+	 * Sends a JSON-RPC notification to a specific connected client identified by its
+	 * session ID.
+	 *
+	 * <p>
+	 * This method is used for server-initiated push notifications to an individual client.
+	 * The notification travels over the client's established SSE connection.
+	 *
+	 * <p>
+	 * <b>Event format (MCP SSE protocol):</b>
+	 *
+	 * <pre>
+	 * event: message
+	 * data: {"jsonrpc":"2.0","method":"<method>","params":<params>}
+	 * </pre>
+	 *
+	 * <h3>Typical use cases:</h3>
+	 * <ul>
+	 * <li>Tool suggestions — push a recommended tool to a specific client based on
+	 * context</li>
+	 * <li>Resource updates — notify a client that a resource it holds has changed</li>
+	 * <li>Progress notifications — long-running operations report back to the client</li>
+	 * <li>Prompt updates — push a system prompt revision to a specific session</li>
+	 * </ul>
+	 *
+	 * <h3>Example: Sending a tool suggestion from within a tool handler</h3>
+	 *
+	 * <pre>{@code
+	 * @Tool
+	 * public String searchDocuments(@ToolParam("query") String query) {
+	 *     // Your tool logic here...
+	 *     SearchResult result = searchService.search(query);
+	 *
+	 *     // After returning, also push a related-tool suggestion back to the client
+	 *     transportProvider.notifyClient(sessionId, "notifications/toolSuggested",
+	 *         Map.of(
+	 *             "suggestion", Map.of(
+	 *                 "name", "openDocument",
+	 *                 "description", "Open a document by ID",
+	 *                 "inputSchema", Map.of(
+	 *                     "type", "object",
+	 *                     "properties", Map.of("documentId", Map.of("type", "string")),
+	 *                     "required", List.of("documentId")
+	 *                 )
+	 *             ),
+	 *             "reason", "User might want to open results directly"
+	 *         )
+	 *     ).subscribe();
+	 *
+	 *     return result.summary();
+	 * }
+	 * }</pre>
+	 *
+	 * <h3>Thread-safety:</h3>
+	 * This method is safe to call from any thread. Session lookups are performed inside
+	 * {@link Mono#defer} to ensure thread-safe access to the {@code sessions} map (a
+	 * {@link ConcurrentHashMap}).
+	 *
+	 * @param sessionId The unique session identifier returned by the MCP server when the
+	 * client first connected via the SSE endpoint. Must not be null.
+	 * @param method The JSON-RPC method name (e.g.,
+	 * "notifications/toolSuggested", "notifications/resourcesUpdated")
+	 * @param params The method parameters, typically a typed object (e.g.,
+	 * {@link io.modelcontextprotocol.spec.McpSchema.ToolSuggestion}) or a raw {@code Map}
+	 * @return A {@link Mono} that completes when the notification has been flushed to the
+	 * SSE sink. Completes immediately with an empty result if the session ID is not found.
+	 */
 	@Override
 	public Mono<Void> notifyClient(String sessionId, String method, Object params) {
 		return Mono.defer(() -> {
