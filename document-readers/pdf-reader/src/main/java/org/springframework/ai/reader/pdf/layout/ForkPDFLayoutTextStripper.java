@@ -39,6 +39,12 @@ import org.slf4j.LoggerFactory;
  */
 public class ForkPDFLayoutTextStripper extends PDFTextStripper {
 
+	/**
+	 * Maximum number of new lines to insert for a single position gap. Guards against
+	 * overflow when height is zero or non-finite.
+	 */
+	private static final int MAX_NEW_LINES_PER_POSITION_GAP = 1000;
+
 	private final static Logger logger = LoggerFactory.getLogger(ForkPDFLayoutTextStripper.class);
 
 	public static final boolean DEBUG = false;
@@ -168,8 +174,11 @@ public class ForkPDFLayoutTextStripper extends PDFTextStripper {
 
 		if (textYPosition > previousTextYPosition && (textYPosition - previousTextYPosition > 5.5)) {
 			double height = textPosition.getHeight();
+			if (!Double.isFinite(height) || height <= 0.0) {
+				return 1;
+			}
 			int numberOfLines = (int) (Math.floor(textYPosition - previousTextYPosition) / height);
-			numberOfLines = Math.max(1, numberOfLines - 1); // exclude current new line
+			numberOfLines = Math.max(1, Math.min(numberOfLines - 1, MAX_NEW_LINES_PER_POSITION_GAP));
 			if (DEBUG) {
 				System.out.println(height + " " + numberOfLines);
 			}
