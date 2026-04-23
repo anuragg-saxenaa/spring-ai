@@ -33,8 +33,10 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolMeta;
 import org.springframework.ai.mcp.annotation.common.McpPredicates;
 import org.springframework.ai.mcp.annotation.common.MetaUtils;
+import org.springframework.ai.mcp.annotation.common.ToolMetaUtils;
 import org.springframework.ai.mcp.annotation.method.tool.AsyncMcpToolMethodCallback;
 import org.springframework.ai.mcp.annotation.method.tool.ReactiveUtils;
 import org.springframework.ai.mcp.annotation.method.tool.ReturnMode;
@@ -83,8 +85,9 @@ public class AsyncMcpToolProvider extends AbstractMcpToolProvider {
 
 					String inputSchema = McpJsonSchemaGenerator.generateForMethodInput(mcpToolMethod);
 
-					var meta = MetaUtils.getMeta(toolJavaAnnotation.metaProvider());
-
+					var toolMetaAnnotation = mcpToolMethod.getAnnotation(McpToolMeta.class);
+					var toolMeta = ToolMetaUtils.parseToolMeta(toolMetaAnnotation);
+					var meta = mergeMeta(MetaUtils.getMeta(toolJavaAnnotation.metaProvider()), toolMeta);
 					var toolBuilder = McpSchema.Tool.builder()
 						.name(toolName)
 						.description(toolDescription)
@@ -159,6 +162,28 @@ public class AsyncMcpToolProvider extends AbstractMcpToolProvider {
 		}
 
 		return toolSpecs;
+	}
+
+	/**
+	 * Merges two metadata maps, with values from the second map taking precedence.
+	 * @param base the base metadata (may be null)
+	 * @param override the override metadata (may be null)
+	 * @return the merged metadata map
+	 */
+	private static java.util.Map<String, Object> mergeMeta(java.util.Map<String, Object> base,
+			java.util.Map<String, Object> override) {
+		if (base == null && override == null) {
+			return null;
+		}
+		if (base == null) {
+			return override;
+		}
+		if (override == null) {
+			return base;
+		}
+		java.util.Map<String, Object> merged = new java.util.HashMap<>(base);
+		merged.putAll(override);
+		return java.util.Collections.unmodifiableMap(merged);
 	}
 
 }

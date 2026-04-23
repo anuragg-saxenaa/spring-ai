@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: spring-ai-kotlin-coroutines-sample
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:your-api-key-here}
+      chat:
+        model: gpt-4o-mini
+        options:
+          temperature: 0.7
+          max-tokens: 500
+
+  # Kotlin coroutines module auto-configuration
+  kotlin:
+    coroutines:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.ai: DEBUG
+    org.springframework.ai.kotlin.coroutines: TRACE

@@ -141,6 +141,20 @@
                 <version>${project.version}</version>
             </dependency>
 
+			<!-- Spring AI Kotlin Coroutines -->
+
+			<dependency>
+				<groupId>org.springframework.ai.kotlin</groupId>
+				<artifactId>spring-ai-kotlin-coroutines</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai.kotlin</groupId>
+				<artifactId>spring-ai-kotlin-coroutines-spring-boot-starter</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
 			<!-- Spring AI MCP -->
 
 			<dependency>
