@@ -116,6 +116,61 @@ public class MessageAggregator {
 				}
 				AssistantMessage outputMessage = chatResponse.getResult().getOutput();
 				if (!CollectionUtils.isEmpty(outputMessage.getToolCalls())) {
+					// Issue #5167: Treat tool calls as an observation boundary marker.
+					// When a tool call is detected, finalize the current observation
+					// (with accumulated text from this LLM call) and reset accumulators
+					// so the next LLM call's chunks start fresh — preventing cumulative
+					// text content across multiple calls in a streaming tool-calling loop.
+					if (messageTextContentRef.get().length() > 0 || !toolCallsRef.get().isEmpty()) {
+						// Emit accumulated observation as a complete ChatResponse
+						var usage = new DefaultUsage(metadataUsagePromptTokensRef.get(),
+								metadataUsageGenerationTokensRef.get(), metadataUsageTotalTokensRef.get());
+						var chatResponseMetadata = ChatResponseMetadata.builder()
+							.id(metadataIdRef.get())
+							.model(metadataModelRef.get())
+							.rateLimit(metadataRateLimitRef.get())
+							.usage(usage)
+							.promptMetadata(metadataPromptMetadataRef.get())
+							.build();
+						var messageMetadata = new HashMap<>(messageMetadataMapRef.get());
+						if (!thoughtsRef.get().isEmpty()) {
+							messageMetadata.put("thoughts", thoughtsRef.get().toString());
+							messageMetadata.put("outputWithoutThoughts", outputWithoutThoughtsRef.get().toString());
+						}
+						List<ToolCall> collectedToolCalls = toolCallsRef.get();
+						AssistantMessage finalAssistantMessage;
+						if (!CollectionUtils.isEmpty(collectedToolCalls)) {
+							finalAssistantMessage = AssistantMessage.builder()
+								.content(messageTextContentRef.get().toString())
+								.properties(messageMetadata)
+								.toolCalls(collectedToolCalls)
+								.build();
+						}
+						else {
+							finalAssistantMessage = AssistantMessage.builder()
+								.content(messageTextContentRef.get().toString())
+								.properties(messageMetadata)
+								.build();
+						}
+						onAggregationComplete.accept(new ChatResponse(
+								List.of(new Generation(finalAssistantMessage, generationMetadataRef.get())),
+								chatResponseMetadata));
+
+						// Reset accumulators for the next observation
+						messageTextContentRef.set(new StringBuilder());
+						thoughtsRef.set(new StringBuilder());
+						outputWithoutThoughtsRef.set(new StringBuilder());
+						messageMetadataMapRef.set(new HashMap<>());
+						toolCallsRef.set(new ArrayList<>());
+						metadataIdRef.set("");
+						metadataModelRef.set("");
+						metadataUsagePromptTokensRef.set(0);
+						metadataUsageGenerationTokensRef.set(0);
+						metadataUsageTotalTokensRef.set(0);
+						metadataPromptMetadataRef.set(PromptMetadata.empty());
+						metadataRateLimitRef.set(new EmptyRateLimit());
+					}
+					// Now add the tool calls from the current response
 					toolCallsRef.get().addAll(outputMessage.getToolCalls());
 				}
 

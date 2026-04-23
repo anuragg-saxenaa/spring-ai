@@ -40,6 +40,7 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.util.json.JsonParser;
 import org.springframework.ai.util.json.schema.JsonSchemaGenerator;
@@ -180,20 +181,30 @@ public final class StructuredOutputValidationAdvisor implements CallAdvisor, Str
 	@SuppressWarnings("null")
 	private SchemaValidation validateOutputSchema(ChatClientResponse chatClientResponse) {
 
-		if (chatClientResponse.chatResponse() == null || chatClientResponse.chatResponse().getResult() == null
-				|| chatClientResponse.chatResponse().getResult().getOutput() == null
-				|| chatClientResponse.chatResponse().getResult().getOutput().getText() == null) {
-
+		if (chatClientResponse.chatResponse() == null || chatClientResponse.chatResponse().getResults() == null
+				|| chatClientResponse.chatResponse().getResults().isEmpty()) {
 			logger.warn("ChatClientResponse is missing required json output for validation.");
 			return SchemaValidation.failed("Missing required json output for validation.");
 		}
 
-		// TODO: should we consider validation for multiple results?
-		String json = chatClientResponse.chatResponse().getResult().getOutput().getText();
+		List<Generation> generations = chatClientResponse.chatResponse().getResults();
 
-		logger.debug("Validating JSON output against schema. Attempts left: {}", this.maxRepeatAttempts);
+		for (Generation generation : generations) {
+			if (generation == null || generation.getOutput() == null || generation.getOutput().getText() == null) {
+				logger.warn("ChatClientResponse is missing required json output for validation.");
+				return SchemaValidation.failed("Missing required json output for validation.");
+			}
 
-		return validateJsonText(json);
+			String json = generation.getOutput().getText();
+			logger.debug("Validating JSON output against schema. Attempts left: {}", this.maxRepeatAttempts);
+
+			SchemaValidation validation = validateJsonText(json);
+			if (!validation.success()) {
+				return validation;
+			}
+		}
+
+		return SchemaValidation.passed();
 	}
 
 	private SchemaValidation validateJsonText(String json) {
