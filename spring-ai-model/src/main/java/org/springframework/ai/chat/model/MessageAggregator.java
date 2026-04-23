@@ -120,7 +120,8 @@ public class MessageAggregator {
 					// When a tool call is detected, finalize the current observation
 					// (with accumulated text from this LLM call) and reset accumulators
 					// so the next LLM call's chunks start fresh — preventing cumulative
-					// text content across multiple calls in a streaming tool-calling loop.
+					// text content across multiple calls in a streaming tool-calling
+					// loop.
 					if (messageTextContentRef.get().length() > 0 || !toolCallsRef.get().isEmpty()) {
 						// Emit accumulated observation as a complete ChatResponse
 						var usage = new DefaultUsage(metadataUsagePromptTokensRef.get(),
@@ -259,7 +260,7 @@ public class MessageAggregator {
 			metadataPromptMetadataRef.set(PromptMetadata.empty());
 			metadataRateLimitRef.set(new EmptyRateLimit());
 
-		}).doOnError(e -> logger.error("Aggregation Error", e));
+		}).doOnError(e -> logger.warn("Aggregation Error", e));
 	}
 
 	public record DefaultUsage(Integer promptTokens, Integer completionTokens, Integer totalTokens) implements Usage {
