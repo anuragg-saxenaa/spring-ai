@@ -250,10 +250,82 @@ public final class WebFluxSseServerTransportProvider implements McpServerTranspo
 			.then();
 	}
 
-	// FIXME: This javadoc makes claims about using isClosing flag but it's not
-	// actually
-	// doing that.
-
+	/**
+	 * Sends a JSON-RPC notification event to a specific connected client through its SSE
+	 * connection. This method is used for server-initiated push notifications to
+	 * individual clients, enabling real-time communication patterns where the server
+	 * proactively sends data without waiting for a client request.
+	 *
+	 * <p>
+	 * The notification is delivered as a Server-Sent Event (SSE) with:
+	 * <ul>
+	 * <li><b>Event type:</b> {@code notification}</li>
+	 * <li><b>Data:</b> JSON-RPC message containing the method name and parameters</li>
+	 * </ul>
+	 *
+	 * <h2>Common Use Cases</h2>
+	 * <ul>
+	 * <li><b>Tool suggestions:</b> Push recommended tools to the client based on context
+	 * <li><b>Resource updates:</b> Notify clients when server-side resources change
+	 * <li><b>Progress updates:</b> Send long-running operation status to clients
+	 * <li><b>Push messaging:</b> Server-initiated alerts or notifications
+	 * <li><b>Cancelled notifications:</b> Signal when a previously requested operation is cancelled
+	 * </ul>
+	 *
+	 * <h2>Thread Safety</h2>
+	 * <p>
+	 * This method is thread-safe. The underlying session map uses
+	 * {@link ConcurrentHashMap} to handle concurrent client connections safely. Multiple
+	 * threads can call this method simultaneously without external synchronization.
+	 * However, the delivery to each individual session is sequential per session.
+	 *
+	 * <h2>Example Usage</h2>
+	 * <p>
+	 * Sending a tool suggestion from within a tool handler:
+	 *
+	 * <pre>{@code
+	 * @-tool
+	 * public class MyToolHandler {
+	 *     @Autowired
+	 *     private McpServerTransportProvider transportProvider;
+	 *
+	 *     public ToolResult executeTool(String toolName, Map<String, Object> args) {
+	 *         // ... tool execution logic ...
+	 *
+	 *         // After execution, push a suggestion to the client
+	 *         Map<String, Object> suggestion = Map.of(
+	 *             "toolName", "suggested-next-tool",
+	 *             "reason", "Based on completed task"
+	 *         );
+	 *         transportProvider.notifyClient(sessionId, "tools/suggestion", suggestion)
+	 *             .subscribe(); // Non-blocking, fire-and-forget
+	 *
+	 *         return result;
+	 *     }
+	 * }
+	 * }</pre>
+	 *
+	 * <h2>MCP Protocol Reference</h2>
+	 * <p>
+	 * The notification format follows the MCP JSON-RPC specification:
+	 * <pre>{@code
+	 * event: notification
+	 * data: {"jsonrpc": "2.0", "method": "tools/suggestion", "params": {...}}
+	 * }</pre>
+	 *
+	 * @param sessionId The unique identifier of the target client session. Must match an
+	 * active session established via the SSE endpoint.
+	 * @param method The JSON-RPC method name for the notification. Convention: use
+	 * dotted path format (e.g., {@code "tools/suggestion"}, {@code "resources/updated"})
+	 * @param params The notification parameters as a JSON-serializable object. Can be a
+	 * {@link Map}, a custom POJO, or any object supported by the configured
+	 * {@link McpJsonMapper}.
+	 * @return A {@link Mono} that completes successfully when the notification has been
+	 * sent to the transport layer. The Mono completes empty on success, or with an error
+	 * if the underlying transport fails. Note: completion does not guarantee client
+	 * receipt due to the fire-and-forget nature of SSE.
+	 * @see #notifyClients(String, Object) for broadcasting to all connected clients
+	 */
 	@Override
 	public Mono<Void> notifyClient(String sessionId, String method, Object params) {
 		return Mono.defer(() -> {
