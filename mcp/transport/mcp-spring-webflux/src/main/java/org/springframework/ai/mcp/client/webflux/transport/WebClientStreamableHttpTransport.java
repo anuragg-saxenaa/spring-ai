@@ -502,7 +502,12 @@ public final class WebClientStreamableHttpTransport implements McpClientTranspor
 	}
 
 	private Tuple2<Optional<String>, Iterable<McpSchema.JSONRPCMessage>> parse(ServerSentEvent<String> event) {
-		if (MESSAGE_EVENT_TYPE.equals(event.event())) {
+		// Per SSE spec, missing event: field defaults to "message".
+		// Accept null, empty string, and "message" as equivalent "message" events.
+		// See: https://html.spec.whatwg.org/multipage/server-sent-events.html
+		String eventType = event.event();
+		boolean isMessageEvent = MESSAGE_EVENT_TYPE.equals(eventType) || eventType == null || eventType.isEmpty();
+		if (isMessageEvent) {
 			try {
 				// We don't support batching ATM and probably won't since the next version
 				// considers removing it.
