@@ -36,7 +36,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.config.BeanMetadataElement;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Role;
 import org.springframework.context.annotation.ImportRuntimeHints;
 
 /**
@@ -55,12 +57,14 @@ public class McpServerAnnotationScannerAutoConfiguration {
 			McpResource.class, McpPrompt.class, McpComplete.class);
 
 	@Bean
+	@Role(BeanMetadataElement.ROLE_INFRASTRUCTURE)
 	@ConditionalOnMissingBean
 	public ServerMcpAnnotatedBeans serverAnnotatedBeanRegistry() {
 		return new ServerMcpAnnotatedBeans();
 	}
 
 	@Bean
+	@Role(BeanMetadataElement.ROLE_INFRASTRUCTURE)
 	@ConditionalOnMissingBean
 	public static ServerAnnotatedMethodBeanPostProcessor serverAnnotatedMethodBeanPostProcessor(
 			ServerMcpAnnotatedBeans serverMcpAnnotatedBeans, McpServerAnnotationScannerProperties properties) {
@@ -68,6 +72,7 @@ public class McpServerAnnotationScannerAutoConfiguration {
 	}
 
 	@Bean
+	@Role(BeanMetadataElement.ROLE_INFRASTRUCTURE)
 	public static ServerAnnotatedBeanFactoryInitializationAotProcessor serverAnnotatedBeanFactoryInitializationAotProcessor() {
 		return new ServerAnnotatedBeanFactoryInitializationAotProcessor(SERVER_MCP_ANNOTATIONS);
 	}

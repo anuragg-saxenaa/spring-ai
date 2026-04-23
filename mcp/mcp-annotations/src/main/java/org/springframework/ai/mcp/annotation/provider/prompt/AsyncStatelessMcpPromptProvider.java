@@ -90,7 +90,7 @@ public class AsyncStatelessMcpPromptProvider {
 			.toList();
 
 		if (promptSpecs.isEmpty()) {
-			logger.warn("No prompt methods found in the provided prompt objects: {}", this.promptObjects);
+			logger.debug("No prompt methods found in the provided prompt objects: {}", this.promptObjects);
 		}
 
 		return promptSpecs;

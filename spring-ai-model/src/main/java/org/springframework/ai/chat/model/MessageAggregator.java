@@ -52,6 +52,55 @@ public class MessageAggregator {
 
 	private static final Logger logger = LoggerFactory.getLogger(MessageAggregator.class);
 
+	/**
+	 * Log level for error logging in the aggregation pipeline. Defaults to
+	 * {@link ErrorLogLevel#WARN}. Set to {@link ErrorLogLevel#ERROR} for full
+	 * compatibility with previous behavior, or {@link ErrorLogLevel#DEBUG} to reduce
+	 * noise in high-throughput scenarios.
+	 */
+	private final ErrorLogLevel errorLogLevel;
+
+	/**
+	 * Log level for aggregation errors.
+	 *
+	 * @since 1.0.0
+	 */
+	public enum ErrorLogLevel {
+
+		/**
+		 * Logs aggregation errors at WARN level (recommended — reduces noise for handled
+		 * errors).
+		 */
+		WARN,
+		/** Logs aggregation errors at ERROR level (original behavior). */
+		ERROR,
+		/**
+		 * Logs aggregation errors at DEBUG level (minimal noise for high-throughput
+		 * scenarios).
+		 */
+		DEBUG,
+		/** Suppresses aggregation error logging entirely. */
+		NONE
+
+	}
+
+	/**
+	 * Creates a MessageAggregator with the default error log level
+	 * ({@link ErrorLogLevel#WARN}).
+	 */
+	public MessageAggregator() {
+		this(ErrorLogLevel.WARN);
+	}
+
+	/**
+	 * Creates a MessageAggregator with the specified error log level.
+	 * @param errorLogLevel the log level for aggregation errors
+	 * @since 1.0.0
+	 */
+	public MessageAggregator(ErrorLogLevel errorLogLevel) {
+		this.errorLogLevel = errorLogLevel;
+	}
+
 	public Flux<ChatResponse> aggregate(Flux<ChatResponse> fluxChatResponse,
 			Consumer<ChatResponse> onAggregationComplete) {
 
@@ -204,7 +253,20 @@ public class MessageAggregator {
 			metadataPromptMetadataRef.set(PromptMetadata.empty());
 			metadataRateLimitRef.set(new EmptyRateLimit());
 
-		}).doOnError(e -> logger.error("Aggregation Error", e));
+			// CHECKSTYLE.OFF+ RightCurly|LineLength - New conditional error-logging block
+		}).doOnError(e -> {
+			if (this.errorLogLevel == ErrorLogLevel.ERROR) {
+				logger.error("Aggregation Error", e);
+			}
+			else if (this.errorLogLevel == ErrorLogLevel.WARN) {
+				logger.warn("Aggregation Error", e);
+			}
+			else if (this.errorLogLevel == ErrorLogLevel.DEBUG) {
+				logger.debug("Aggregation Error", e);
+			}
+			// else NONE — suppress logging entirely
+		});
+		// CHECKSTYLE.ON+ RightCurly|LineLength
 	}
 
 	public record DefaultUsage(Integer promptTokens, Integer completionTokens, Integer totalTokens) implements Usage {

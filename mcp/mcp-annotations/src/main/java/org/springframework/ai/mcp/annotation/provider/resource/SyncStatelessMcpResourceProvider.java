@@ -117,7 +117,7 @@ public class SyncStatelessMcpResourceProvider {
 			.toList();
 
 		if (resourceSpecs.isEmpty()) {
-			logger.warn("No resource methods found in the provided resource objects: {}", this.resourceObjects);
+			logger.debug("No resource methods found in the provided resource objects: {}", this.resourceObjects);
 		}
 
 		return resourceSpecs;
@@ -170,7 +170,7 @@ public class SyncStatelessMcpResourceProvider {
 			.toList();
 
 		if (resourceSpecs.isEmpty()) {
-			logger.warn("No resource methods found in the provided resource objects: {}", this.resourceObjects);
+			logger.debug("No resource methods found in the provided resource objects: {}", this.resourceObjects);
 		}
 
 		return resourceSpecs;
