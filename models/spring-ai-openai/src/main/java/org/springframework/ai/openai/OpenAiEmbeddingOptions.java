@@ -124,7 +124,7 @@ public class OpenAiEmbeddingOptions extends AbstractOpenAiOptions implements Emb
 			this.options.setDimensions(fromOptions.getDimensions());
 			return this;
 		}
-
+					
 		public Builder merge(@Nullable EmbeddingOptions from) {
 			if (from == null) {
 				return this;
@@ -166,6 +166,15 @@ public class OpenAiEmbeddingOptions extends AbstractOpenAiOptions implements Emb
 				}
 				if (castFrom.getDimensions() != null) {
 					this.options.setDimensions(castFrom.getDimensions());
+				}
+			}
+			else {
+				// Handle non-OpenAiEmbeddingOptions: copy common EmbeddingOptions fields
+				if (from.getModel() != null) {
+					this.options.setModel(from.getModel());
+				}
+				if (from.getDimensions() != null) {
+					this.options.setDimensions(from.getDimensions());
 				}
 			}
 			return this;
