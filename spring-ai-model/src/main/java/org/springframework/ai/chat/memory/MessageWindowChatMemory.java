@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -113,36 +114,48 @@ public final class MessageWindowChatMemory implements ChatMemory {
 	}
 
 	/**
-	 * Drop any {@link ToolResponseMessage} instances at the head of the non-system
-	 * portion of the list whose paired {@code AssistantMessage} tool-use was evicted by
-	 * the window trim. Leaving such messages causes providers (e.g. Anthropic) to reject
-	 * the request with a 400 because the {@code tool_result} has no matching
-	 * {@code tool_use} in the preceding turn.
+	 * Drop any {@link ToolResponseMessage} whose paired {@code AssistantMessage} tool-use
+	 * was evicted by the window trim. Leaving such messages causes providers (e.g.
+	 * Anthropic) to reject the request with a 400 because the {@code tool_result} has no
+	 * matching {@code tool_use} in the retained conversation.
 	 * <p>
-	 * <strong>Assumption:</strong> this method is only correct under FIFO (head-first)
-	 * eviction. If a future eviction strategy removes an {@code AssistantMessage} that
-	 * has tool calls from a non-leading position, its corresponding
-	 * {@link ToolResponseMessage} will not be detected as an orphan by this scan.
+	 * The check is id-based and scans the entire retained list (not just the head), which
+	 * correctly handles orphan {@link ToolResponseMessage}s sandwiched between non-orphan
+	 * messages — e.g. a single {@link AssistantMessage} with multiple tool calls whose
+	 * window eviction lands between two adjacent {@code tool_use} / {@code tool_result}
+	 * pairs.
 	 */
 	private static List<Message> dropOrphanedToolResponses(List<Message> messages) {
-		// Find where non-system messages begin
-		int firstNonSystem = 0;
-		while (firstNonSystem < messages.size() && messages.get(firstNonSystem) instanceof SystemMessage) {
-			firstNonSystem++;
+		// Collect every tool_call_id produced by any retained AssistantMessage.
+		Set<String> retainedToolCallIds = new HashSet<>();
+		for (Message message : messages) {
+			if (message instanceof AssistantMessage assistantMessage && assistantMessage.hasToolCalls()) {
+				for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+					if (toolCall.id() != null) {
+						retainedToolCallIds.add(toolCall.id());
+					}
+				}
+			}
 		}
 
-		// Advance past any ToolResponseMessages at the head (their tool_use was evicted)
-		int cutFrom = firstNonSystem;
-		while (cutFrom < messages.size() && messages.get(cutFrom) instanceof ToolResponseMessage) {
-			cutFrom++;
+		List<Message> result = new ArrayList<>(messages.size());
+		for (Message message : messages) {
+			if (message instanceof ToolResponseMessage toolResponseMessage) {
+				boolean allMatched = true;
+				for (ToolResponseMessage.ToolResponse response : toolResponseMessage.getResponses()) {
+					if (response.id() == null || !retainedToolCallIds.contains(response.id())) {
+						allMatched = false;
+						break;
+					}
+				}
+				if (allMatched) {
+					result.add(message);
+				}
+			}
+			else {
+				result.add(message);
+			}
 		}
-
-		if (cutFrom == firstNonSystem) {
-			return messages;
-		}
-
-		List<Message> result = new ArrayList<>(messages.subList(0, firstNonSystem));
-		result.addAll(messages.subList(cutFrom, messages.size()));
 		return result;
 	}
 

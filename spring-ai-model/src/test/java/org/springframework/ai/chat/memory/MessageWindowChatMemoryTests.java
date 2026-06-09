@@ -430,4 +430,57 @@ public class MessageWindowChatMemoryTests {
 		assertThat(result).contains(done);
 	}
 
+	/**
+	 * Gap test for #5940 / PR #6029: when the window eviction splits a single assistant
+	 * message's tool_use / tool_result pairs across the head boundary, orphan
+	 * {@link ToolResponseMessage}s that are NOT at the head of the retained list (i.e.
+	 * sandwiched between non-ToolResponse messages) must also be dropped.
+	 *
+	 * <p>
+	 * Concrete scenario (window = 5, single assistant with TWO tool calls, followed by an
+	 * interleaved user turn):<pre>
+	 *   [system, u1, assistant{t1,t2}, toolResponse{t1}, user2, toolResponse{t2}, u3, nextTurn]
+	 * </pre> Eviction keeps the last 5: {@code [toolResponse{t1}, user2,
+	 * toolResponse{t2}, u3, nextTurn]}. The current head-only scan drops the leading
+	 * {@code toolResponse{t1}} (its {@code tool_use} is in the evicted
+	 * {@code assistant{t1,t2}}) but leaves {@code toolResponse{t2}} even though it is
+	 * ALSO an orphan (same evicted {@code assistant{t1,t2}}). Sending this to Anthropic
+	 * would cause {@code 400: unexpected tool_use_id found in tool_result blocks}.
+	 *
+	 * <p>
+	 * This is the case RED identified as missing from the test matrix.
+	 */
+	@Test
+	void orphanToolResponseInsideRetainedConversationIsDropped() {
+		int limit = 5;
+		MessageWindowChatMemory mem = MessageWindowChatMemory.builder().maxMessages(limit).build();
+		String id = UUID.randomUUID().toString();
+
+		AssistantMessage assistantWithTwoToolCalls = AssistantMessage.builder()
+			.toolCalls(List.of(new AssistantMessage.ToolCall("t1", "function", "tool_a", "{}"),
+					new AssistantMessage.ToolCall("t2", "function", "tool_b", "{}")))
+			.build();
+		ToolResponseMessage toolResponse1 = ToolResponseMessage.builder()
+			.responses(List.of(new ToolResponseMessage.ToolResponse("t1", "tool_a", "result_a")))
+			.build();
+		UserMessage user2 = new UserMessage("user2");
+		ToolResponseMessage toolResponse2 = ToolResponseMessage.builder()
+			.responses(List.of(new ToolResponseMessage.ToolResponse("t2", "tool_b", "result_b")))
+			.build();
+		UserMessage u3 = new UserMessage("u3");
+		AssistantMessage nextTurn = new AssistantMessage("next turn reply");
+
+		mem.add(id, List.of(new UserMessage("u1"), assistantWithTwoToolCalls, toolResponse1, user2, toolResponse2, u3,
+				nextTurn));
+
+		List<Message> result = mem.get(id);
+
+		// Both tool_results are orphans because their tool_use was inside
+		// assistantWithTwoToolCalls which was evicted by the window trim.
+		assertThat(result.stream().filter(ToolResponseMessage.class::isInstance).count()).isZero();
+		assertThat(result).doesNotContain(toolResponse1, toolResponse2);
+		// Sanity: non-orphan messages survive.
+		assertThat(result).contains(user2, u3, nextTurn);
+	}
+
 }
