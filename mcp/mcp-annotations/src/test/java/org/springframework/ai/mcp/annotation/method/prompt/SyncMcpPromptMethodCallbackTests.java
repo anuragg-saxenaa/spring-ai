@@ -24,6 +24,7 @@ import java.util.function.BiFunction;
 
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpError;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptResult;
 import io.modelcontextprotocol.spec.McpSchema.Prompt;
@@ -79,7 +80,17 @@ public class SyncMcpPromptMethodCallbackTests {
 		// The new error handling should throw McpError instead of
 		// McpPromptMethodException
 		assertThatThrownBy(() -> callback.apply(exchange, request)).isInstanceOf(McpError.class)
-			.hasMessageContaining("Error invoking prompt method");
+			.hasMessageContaining("Error invoking prompt method")
+			.satisfies(t -> {
+				McpError mcpError = (McpError) t;
+				assertThat(mcpError.getJsonRpcError()).isNotNull();
+				// Issue #5812: method-invocation failures use INTERNAL_ERROR (-32603),
+				// not INVALID_PARAMS (-32602). INVALID_PARAMS is for caller-side
+				// parameter
+				// validation, not for runtime exceptions thrown from the method body.
+				assertThat(mcpError.getJsonRpcError().code()).isEqualTo(McpSchema.ErrorCodes.INTERNAL_ERROR);
+				assertThat(mcpError.getJsonRpcError().code()).isEqualTo(-32603);
+			});
 	}
 
 	@Test

@@ -24,6 +24,7 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpError;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.BlobResourceContents;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceRequest;
 import io.modelcontextprotocol.spec.McpSchema.ReadResourceResult;
@@ -1002,7 +1003,18 @@ public class SyncMcpResourceMethodCallbackTests {
 
 		// The new error handling should throw McpError instead of custom exceptions
 		assertThatThrownBy(() -> callback.apply(exchange, request)).isInstanceOf(McpError.class)
-			.hasMessageContaining("Error invoking resource method");
+			.hasMessageContaining("Error invoking resource method")
+			.satisfies(t -> {
+				McpError mcpError = (McpError) t;
+				assertThat(mcpError.getJsonRpcError()).isNotNull();
+				// Issue #5812: method-invocation failures use INTERNAL_ERROR (-32603),
+				// not INVALID_PARAMS (-32602). INVALID_PARAMS is for caller-side
+				// parameter
+				// validation (handled by the validate() chain before invocation), not
+				// for runtime exceptions thrown from the method body.
+				assertThat(mcpError.getJsonRpcError().code()).isEqualTo(McpSchema.ErrorCodes.INTERNAL_ERROR);
+				assertThat(mcpError.getJsonRpcError().code()).isEqualTo(-32603);
+			});
 	}
 
 	@Test
