@@ -223,6 +223,17 @@ public class OpenAiEmbeddingOptions extends AbstractOpenAiOptions implements Emb
 					this.dimensions = castFrom.getDimensions();
 				}
 			}
+			else {
+				// Portable EmbeddingOptions: only the common model/dimensions fields are
+				// exposed, so merge just those. Provider-specific fields (deploymentName,
+				// user, etc.) are intentionally left untouched on the builder.
+				if (from.getModel() != null) {
+					this.model = from.getModel();
+				}
+				if (from.getDimensions() != null) {
+					this.dimensions = from.getDimensions();
+				}
+			}
 			return this;
 		}
 

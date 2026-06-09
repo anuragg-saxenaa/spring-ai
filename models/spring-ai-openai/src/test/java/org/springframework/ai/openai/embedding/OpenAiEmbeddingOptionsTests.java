@@ -21,6 +21,7 @@ import java.util.List;
 import com.openai.models.embeddings.EmbeddingCreateParams;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,6 +62,61 @@ class OpenAiEmbeddingOptionsTests {
 
 		assertThat(copied.getEncodingFormat()).isEqualTo(OpenAiEmbeddingOptions.EncodingFormat.FLOAT);
 		assertThat(merged.getEncodingFormat()).isEqualTo(OpenAiEmbeddingOptions.EncodingFormat.FLOAT);
+	}
+
+	// --- Issue #6042: portable EmbeddingOptions.model/dimensions must be merged ---
+
+	@Test
+	void mergePortableEmbeddingOptionsPropagatesModel() {
+		// Portable EmbeddingOptions carrying only a model name.
+		EmbeddingOptions portable = EmbeddingOptions.builder().model("bge-multilingual-gemma2").build();
+
+		// Builder starts with a different model and no dimensions.
+		OpenAiEmbeddingOptions merged = OpenAiEmbeddingOptions.builder()
+			.model("text-embedding-ada-002")
+			.merge(portable)
+			.build();
+
+		// Model is propagated from the portable options.
+		assertThat(merged.getModel()).isEqualTo("bge-multilingual-gemma2");
+		// Dimensions is left unchanged on the builder.
+		assertThat(merged.getDimensions()).isNull();
+	}
+
+	@Test
+	void mergePortableEmbeddingOptionsPropagatesDimensions() {
+		// Portable EmbeddingOptions carrying only a dimensions value.
+		EmbeddingOptions portable = EmbeddingOptions.builder().dimensions(768).build();
+
+		// Builder starts with a model and no dimensions.
+		OpenAiEmbeddingOptions merged = OpenAiEmbeddingOptions.builder()
+			.model("text-embedding-ada-002")
+			.merge(portable)
+			.build();
+
+		// Dimensions is propagated from the portable options.
+		assertThat(merged.getDimensions()).isEqualTo(768);
+		// Model is left unchanged on the builder.
+		assertThat(merged.getModel()).isEqualTo("text-embedding-ada-002");
+	}
+
+	@Test
+	void mergePortableEmbeddingOptionsOverridesBuilderWhenBothSet() {
+		// Portable EmbeddingOptions with both fields populated. The portable options
+		// are the "merge source" (i.e. applied later), so they must win — matching the
+		// existing merge() semantics for OpenAiEmbeddingOptions. This is a regression
+		// guard ensuring the new portable-merge branch does not silently drop overrides.
+		EmbeddingOptions portable = EmbeddingOptions.builder().model("portable-model").dimensions(1024).build();
+
+		OpenAiEmbeddingOptions merged = OpenAiEmbeddingOptions.builder()
+			.model("builder-model")
+			.dimensions(512)
+			.merge(portable)
+			.build();
+
+		// Later values win: the portable (merge source) values override the builder.
+		assertThat(merged.getModel()).isEqualTo("portable-model");
+		assertThat(merged.getDimensions()).isEqualTo(1024);
 	}
 
 }
