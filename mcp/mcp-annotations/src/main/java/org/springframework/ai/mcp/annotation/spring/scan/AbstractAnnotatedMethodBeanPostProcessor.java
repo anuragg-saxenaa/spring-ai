@@ -17,6 +17,8 @@
 package org.springframework.ai.mcp.annotation.spring.scan;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Proxy;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import org.springframework.aop.support.AopUtils;
@@ -44,7 +46,23 @@ public abstract class AbstractAnnotatedMethodBeanPostProcessor extends Annotated
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
 		Class<?> beanClass = AopUtils.getTargetClass(bean); // Handle proxied beans
-		Set<Class<? extends Annotation>> foundAnnotations = scan(beanClass);
+
+		// For JDK dynamic proxies (e.g. those created by Spring's HttpServiceClient via
+		// java.lang.reflect.Proxy), the proxy class does not declare the user-facing
+		// interface methods, so the annotations on those methods are not discoverable
+		// by scanning the proxy class alone. We need to also scan the proxied
+		// interfaces (issue #5823).
+		Set<Class<?>> classesToScan = new LinkedHashSet<>();
+		classesToScan.add(beanClass);
+		if (Proxy.isProxyClass(beanClass)) {
+			classesToScan.addAll(java.util.Arrays.asList(beanClass.getInterfaces()));
+		}
+
+		Set<Class<? extends Annotation>> foundAnnotations = new LinkedHashSet<>();
+		for (Class<?> cls : classesToScan) {
+			foundAnnotations.addAll(scan(cls));
+		}
+
 		// Register the bean if it has any of our target annotations
 		if (!foundAnnotations.isEmpty()) {
 			this.registry.addMcpAnnotatedBean(bean, foundAnnotations);

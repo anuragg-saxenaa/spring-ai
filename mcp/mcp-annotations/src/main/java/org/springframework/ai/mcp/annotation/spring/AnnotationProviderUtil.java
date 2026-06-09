@@ -17,9 +17,11 @@
 package org.springframework.ai.mcp.annotation.spring;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.stream.Stream;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import org.springframework.aop.support.AopUtils;
 import org.springframework.util.ReflectionUtils;
@@ -35,23 +37,48 @@ public final class AnnotationProviderUtil {
 	/**
 	 * Returns the declared methods of the given bean, sorted by method name and parameter
 	 * types. This is useful for consistent method ordering in annotation processing.
+	 * <p>
+	 * For JDK dynamic proxies (e.g. those created by Spring's {@code HttpServiceClient}
+	 * via {@code java.lang.reflect.Proxy}), the proxy class itself does not declare the
+	 * interface methods — they are dispatched to the proxy's
+	 * {@link java.lang.reflect.InvocationHandler}. Reflecting on the proxy class
+	 * therefore only exposes internal proxy methods (such as
+	 * {@code $Proxy$N.proxyClassLookup}) and not the user-declared methods where
+	 * annotations like {@code @McpTool} live.
+	 * <p>
+	 * To make annotations on interface methods discoverable, when the bean is a JDK
+	 * dynamic proxy we union the proxy's declared methods with the methods declared by
+	 * all proxied interfaces. The interface {@link Method} objects carry the annotations
+	 * and are usable for reflective invocation through the proxy (issue #5823).
 	 * @param bean The bean instance to inspect
 	 * @return An array of sorted methods
 	 */
 	public static Method[] beanMethods(Object bean) {
 
-		Method[] methods = ReflectionUtils
-			.getUniqueDeclaredMethods(AopUtils.isAopProxy(bean) ? AopUtils.getTargetClass(bean) : bean.getClass());
+		Class<?> beanClass = AopUtils.isAopProxy(bean) ? AopUtils.getTargetClass(bean) : bean.getClass();
 
-		methods = Stream.of(methods).filter(ReflectionUtils.USER_DECLARED_METHODS::matches).toArray(Method[]::new);
+		// Use a LinkedHashSet to deduplicate Method objects while preserving insertion
+		// order. Method#equals is identity-based on the declaring class, so the same
+		// logical method reached through the proxy class and through the interface
+		// would otherwise appear as two distinct entries.
+		Set<Method> uniqueMethods = new LinkedHashSet<>(
+				Arrays.asList(ReflectionUtils.getUniqueDeclaredMethods(beanClass)));
 
-		// Method[] methods = ReflectionUtils
-		// .getDeclaredMethods(AopUtils.isAopProxy(bean) ? AopUtils.getTargetClass(bean) :
-		// bean.getClass());
+		// Spring's AopUtils does not recognise raw java.lang.reflect.Proxy instances
+		// (those not wrapped via Spring AOP's ProxyFactory), so isAopProxy may return
+		// false even for a real JDK proxy. Check Proxy.isProxyClass explicitly to make
+		// sure interface methods are surfaced regardless of how the proxy was created.
+		if (Proxy.isProxyClass(beanClass)) {
+			for (Class<?> iface : beanClass.getInterfaces()) {
+				uniqueMethods.addAll(Arrays.asList(ReflectionUtils.getUniqueDeclaredMethods(iface)));
+			}
+		}
 
-		// Sort methods by name and parameter types for consistent ordering
-		Arrays.sort(methods, Comparator.comparing(Method::getName)
-			.thenComparing(method -> Arrays.toString(method.getParameterTypes())));
+		Method[] methods = uniqueMethods.stream()
+			.filter(ReflectionUtils.USER_DECLARED_METHODS::matches)
+			.sorted(Comparator.comparing(Method::getName)
+				.thenComparing(method -> Arrays.toString(method.getParameterTypes())))
+			.toArray(Method[]::new);
 
 		return methods;
 	}
