@@ -116,7 +116,7 @@ public class MessageAggregator {
 				}
 				AssistantMessage outputMessage = chatResponse.getResult().getOutput();
 				if (!CollectionUtils.isEmpty(outputMessage.getToolCalls())) {
-					toolCallsRef.get().addAll(outputMessage.getToolCalls());
+					mergeToolCalls(toolCallsRef.get(), outputMessage.getToolCalls());
 				}
 
 			}
@@ -205,6 +205,72 @@ public class MessageAggregator {
 			metadataRateLimitRef.set(new EmptyRateLimit());
 
 		}).doOnError(e -> logger.error("Aggregation Error", e));
+	}
+
+	/**
+	 * Merge a chunk's tool calls into the running aggregated list. Streaming model
+	 * responses (OpenAI, OpenAI-compatible, Azure OpenAI, etc.) typically emit a single
+	 * tool call across multiple chunks: the first chunk carries the {@code id} and
+	 * {@code name} with an empty {@code arguments} string, and subsequent chunks carry
+	 * blank {@code id}/{@code name} and a fragment of {@code arguments}. Naive
+	 * {@code addAll} keeps those fragments as separate tool calls, leaving the first call
+	 * with an empty arguments string and causing
+	 * {@code IllegalArgumentException: toolInput cannot be null or empty} when execution
+	 * reaches the tool callback (issue #5806).
+	 *
+	 * <p>
+	 * Merge rules:
+	 * <ul>
+	 * <li>A chunk entry with a non-blank {@code id} that has no match in the accumulator
+	 * starts a new tool call. It is appended as-is.</li>
+	 * <li>A chunk entry with a blank {@code id} is a continuation. Its {@code arguments}
+	 * are appended to the most recent tool call in the accumulator; if {@code arguments}
+	 * is blank/null the chunk is ignored to avoid clobbering accumulated state.</li>
+	 * <li>The first non-blank {@code name} seen for a given tool call id wins; later
+	 * chunks do not overwrite an already-set name.</li>
+	 * </ul>
+	 */
+	static void mergeToolCalls(List<ToolCall> accumulated, List<ToolCall> incoming) {
+		if (CollectionUtils.isEmpty(incoming)) {
+			return;
+		}
+		if (accumulated.isEmpty()) {
+			accumulated.addAll(incoming);
+			return;
+		}
+		for (ToolCall chunk : incoming) {
+			// Try to find an existing tool call in the accumulator with the same id.
+			// Most streaming providers set the id on the first chunk and leave it
+			// blank on continuation chunks, so a blank-id chunk falls through to
+			// "attach to most recent open tool call".
+			ToolCall existing = null;
+			if (StringUtils.hasText(chunk.id())) {
+				for (ToolCall candidate : accumulated) {
+					if (chunk.id().equals(candidate.id())) {
+						existing = candidate;
+						break;
+					}
+				}
+			}
+			if (existing == null && !StringUtils.hasText(chunk.id())) {
+				// Continuation chunk: attach to most recent tool call.
+				existing = accumulated.get(accumulated.size() - 1);
+			}
+			if (existing == null) {
+				// New tool call (id present, no match in accumulator).
+				accumulated.add(chunk);
+				continue;
+			}
+			String mergedArgs = existing.arguments() == null ? "" : existing.arguments();
+			if (StringUtils.hasText(chunk.arguments())) {
+				mergedArgs = mergedArgs + chunk.arguments();
+			}
+			String mergedName = StringUtils.hasText(existing.name()) ? existing.name() : chunk.name();
+			String mergedType = StringUtils.hasText(existing.type()) ? existing.type() : chunk.type();
+			String mergedId = StringUtils.hasText(existing.id()) ? existing.id() : chunk.id();
+			// ToolCall is a record — replace in-place by index.
+			accumulated.set(accumulated.indexOf(existing), new ToolCall(mergedId, mergedType, mergedName, mergedArgs));
+		}
 	}
 
 	public record DefaultUsage(Integer promptTokens, Integer completionTokens, Integer totalTokens) implements Usage {
