@@ -24,13 +24,15 @@ import org.jspecify.annotations.Nullable;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.model.AssistantMessageReasoningExtractor;
 
 /**
  * @author Mark Pollack
  * @author Soby Chacko
  * @author Sun Yuhan
  */
-public class DeepSeekAssistantMessage extends AssistantMessage {
+public class DeepSeekAssistantMessage extends AssistantMessage
+		implements AssistantMessageReasoningExtractor.DeepSeekReasoningAccessor {
 
 	private @Nullable Boolean prefix;
 

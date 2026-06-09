@@ -50,6 +50,7 @@ import org.springframework.ai.chat.observation.ChatModelObservationDocumentation
 import org.springframework.ai.chat.observation.DefaultChatModelObservationConvention;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.AssistantMessageReasoningExtractor;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -466,10 +467,19 @@ public class OllamaChatModel implements ChatModel {
 						return new ToolCall(toolCall.id(), function);
 					}).toList();
 				}
-				return List.of(OllamaApi.Message.builder(Role.ASSISTANT)
+				// Replay the Ollama thinking trace when present so the next turn can
+				// continue the model's chain-of-thought. The receive side stores the
+				// thinking string on AssistantMessage.properties under
+				// THINKING_METADATA_KEY; AssistantMessageReasoningExtractor also falls
+				// back to it. See spring-ai issue #6016.
+				String thinking = AssistantMessageReasoningExtractor.extract(assistantMessage);
+				var assistantBuilder = OllamaApi.Message.builder(Role.ASSISTANT)
 					.content(assistantMessage.getText())
-					.toolCalls(toolCalls)
-					.build());
+					.toolCalls(toolCalls);
+				if (StringUtils.hasText(thinking)) {
+					assistantBuilder.thinking(thinking);
+				}
+				return List.of(assistantBuilder.build());
 			}
 			else if (message.getMessageType() == MessageType.TOOL) {
 				ToolResponseMessage toolMessage = (ToolResponseMessage) message;

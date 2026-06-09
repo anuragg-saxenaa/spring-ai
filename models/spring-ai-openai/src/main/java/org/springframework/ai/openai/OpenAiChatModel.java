@@ -84,6 +84,7 @@ import org.springframework.ai.chat.observation.DefaultChatModelObservationConven
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.model.AssistantMessageReasoningExtractor;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -117,6 +118,13 @@ public final class OpenAiChatModel implements ChatModel {
 	private static final ChatModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultChatModelObservationConvention();
 
 	private static final ToolCallingManager DEFAULT_TOOL_CALLING_MANAGER = ToolCallingManager.builder().build();
+
+	/**
+	 * Metadata key used to carry the OpenAI-style reasoning content on a
+	 * {@link AssistantMessage}. See
+	 * {@link org.springframework.ai.model.AssistantMessageReasoningExtractor#REASONING_CONTENT_KEY}.
+	 */
+	static final String REASONING_CONTENT = "reasoningContent";
 
 	private final Logger logger = LoggerFactory.getLogger(OpenAiChatModel.class);
 
@@ -223,7 +231,8 @@ public final class OpenAiChatModel implements ChatModel {
 							"index", choice.index(), "finishReason", choice.finishReason().value().toString(),
 							"refusal", choice.message().refusal().isPresent() ? choice.message().refusal() : "",
 							"annotations", choice.message().annotations().isPresent() ? choice.message().annotations()
-									: List.of(Map.of()));
+									: List.of(Map.of()),
+							REASONING_CONTENT, getReasoningContent(choice));
 					return buildGeneration(choice, metadata, request);
 				}).toList();
 
@@ -317,9 +326,11 @@ public final class OpenAiChatModel implements ChatModel {
 							Map<String, Object> metadata = Map.of("id", id, "role", roleMap.getOrDefault(id, ""),
 									"index", choice.index(), "finishReason", choice.finishReason().value(), "refusal",
 									choice.message().refusal().isPresent() ? choice.message().refusal() : "",
-									"annotations", choice.message().annotations().isPresent()
-											? choice.message().annotations() : List.of(),
-									"chunkChoice", chunk.choices().get((int) choice.index()));
+									"annotations",
+									choice.message().annotations().isPresent() ? choice.message().annotations()
+											: List.of(),
+									"chunkChoice", chunk.choices().get((int) choice.index()), REASONING_CONTENT,
+									getReasoningContent(choice));
 
 							return buildGeneration(choice, metadata, request);
 						}).toList();
@@ -629,6 +640,39 @@ public final class OpenAiChatModel implements ChatModel {
 				Math.toIntExact(usage.totalTokens()), usage, cacheRead, null);
 	}
 
+	/**
+	 * Extract the reasoning content from a chat completion choice, looking at the
+	 * vendor-specific additional properties on the message. Returns an empty string when
+	 * the provider did not surface a reasoning trace, so that the value can be safely
+	 * added to a {@link Map#of(Object, Object) Map.of} metadata entry without triggering
+	 * a null check.
+	 * <p>
+	 * The OpenAI Java SDK does not model {@code reasoning_content} as a first-class
+	 * field, so it travels on the {@code _additionalProperties} map. We also accept
+	 * {@code reasoning} as a fallback for variants that use the shorter key.
+	 * @param choice the choice to inspect
+	 * @return the reasoning content, or an empty string if absent
+	 */
+	private String getReasoningContent(ChatCompletion.Choice choice) {
+		Map<String, JsonValue> additionalProperties = choice.message()._additionalProperties();
+		JsonValue reasoningContent = additionalProperties.get("reasoning_content");
+		if (reasoningContent != null) {
+			return readOptionalString(reasoningContent).orElse("");
+		}
+		JsonValue reasoning = additionalProperties.get("reasoning");
+		if (reasoning != null) {
+			return readOptionalString(reasoning).orElse("");
+		}
+		return "";
+	}
+
+	private static java.util.Optional<String> readOptionalString(JsonValue value) {
+		if (value == null) {
+			return java.util.Optional.empty();
+		}
+		return value.asString();
+	}
+
 	private void verifyPromptChatOptions(Prompt prompt) {
 		var chatOptions = prompt.getOptions();
 
@@ -773,6 +817,17 @@ public final class OpenAiChatModel implements ChatModel {
 							.toList();
 
 						builder.toolCalls(toolCalls);
+					}
+
+					// Replay reasoning content only when present. Plain OpenAI requests
+					// remain unchanged. See spring-ai issue #6016 and DeepSeek's HTTP 400
+					// response when reasoning_content is missing from a continuation
+					// turn.
+					String reasoningContent = AssistantMessageReasoningExtractor.extract(assistantMessage);
+					if (StringUtils.hasText(reasoningContent)) {
+						// Wire field is "reasoning_content"; metadata key is
+						// REASONING_CONTENT.
+						builder.putAdditionalProperty("reasoning_content", JsonValue.from(reasoningContent));
 					}
 
 					return List.of(ChatCompletionMessageParam.ofAssistant(builder.build()));

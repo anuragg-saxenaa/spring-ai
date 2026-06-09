@@ -57,6 +57,7 @@ import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage.Cha
 import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage.ToolCall;
 import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionRequest;
 import org.springframework.ai.deepseek.api.common.DeepSeekConstants;
+import org.springframework.ai.model.AssistantMessageReasoningExtractor;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -423,8 +424,13 @@ public class DeepSeekChatModel implements ChatModel {
 				}
 				String text = assistantMessage.getText();
 				Assert.state(text != null, "text must not be null");
+				// Replay reasoning content so the next request can continue the agent's
+				// thought process. DeepSeek returns HTTP 400 if reasoning_content is
+				// missing
+				// from a continuation turn. See spring-ai issue #6016.
+				String reasoningContent = AssistantMessageReasoningExtractor.extract(assistantMessage);
 				return List.of(new ChatCompletionMessage(text, ChatCompletionMessage.Role.ASSISTANT, null, null,
-						toolCalls, isPrefixAssistantMessage, null));
+						toolCalls, isPrefixAssistantMessage, reasoningContent));
 			}
 			else if (message.getMessageType() == MessageType.TOOL) {
 				ToolResponseMessage toolMessage = (ToolResponseMessage) message;
