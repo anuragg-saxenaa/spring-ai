@@ -99,6 +99,12 @@ public class DefaultChatClientBuilder implements Builder {
 		return this;
 	}
 
+	@Override
+	public Builder defaultOptionsMerge(ChatOptions.Builder chatOptions) {
+		this.defaultRequest.merge(chatOptions);
+		return this;
+	}
+
 	public Builder defaultUser(String text) {
 		this.defaultRequest.user(text);
 		return this;

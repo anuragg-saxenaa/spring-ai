@@ -875,6 +875,20 @@ public class DefaultChatClient implements ChatClient {
 		}
 
 		@Override
+		public <B extends ChatOptions.Builder<?>> ChatClientRequestSpec merge(B customizer) {
+			Assert.notNull(customizer, "customizer cannot be null");
+			if (this.optionsCustomizer == null) {
+				this.optionsCustomizer = customizer.clone();
+			}
+			else {
+				@SuppressWarnings("unchecked")
+				B merged = (B) this.optionsCustomizer.combineWith(customizer);
+				this.optionsCustomizer = merged;
+			}
+			return this;
+		}
+
+		@Override
 		public ChatClientRequestSpec toolNames(String... toolNames) {
 			Assert.notNull(toolNames, "toolNames cannot be null");
 			Assert.noNullElements(toolNames, "toolNames cannot contain null elements");

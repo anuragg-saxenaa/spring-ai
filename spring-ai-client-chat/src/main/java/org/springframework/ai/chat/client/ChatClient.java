@@ -210,6 +210,19 @@ public interface ChatClient {
 
 		<B extends ChatOptions.Builder<?>> ChatClientRequestSpec options(B customizer);
 
+		/**
+		 * Merge the given {@link ChatOptions.Builder customizer} into the existing
+		 * options customizer (if any) using {@code combineWith} semantics: only non-null
+		 * fields from {@code customizer} override the existing values. If no customizer
+		 * is set, the new one is stored (cloned) as-is. This preserves any
+		 * auto-configured or previously-set options that the new customizer does not
+		 * explicitly override.
+		 * @param customizer the options customizer to merge in
+		 * @return this spec
+		 * @see ChatOptions.Builder#combineWith(ChatOptions.Builder)
+		 */
+		<B extends ChatOptions.Builder<?>> ChatClientRequestSpec merge(B customizer);
+
 		ChatClientRequestSpec toolNames(String... toolNames);
 
 		ChatClientRequestSpec tools(Object... toolObjects);
@@ -258,6 +271,23 @@ public interface ChatClient {
 		Builder defaultAdvisors(List<Advisor> advisors);
 
 		Builder defaultOptions(ChatOptions.Builder chatOptions);
+
+		/**
+		 * Merge the given {@link ChatOptions.Builder chatOptions} into the existing
+		 * default options using {@code combineWith} semantics: only non-null fields from
+		 * {@code chatOptions} override the existing values, leaving any other
+		 * auto-configured or previously-set default options intact. This addresses the
+		 * issue where {@link #defaultOptions(ChatOptions.Builder)} would replace all
+		 * auto-configured options wholesale, making it impossible to override a single
+		 * property (for example, the model name) without losing the rest.
+		 * <p>
+		 * Existing callers that depend on the replace behaviour should continue to use
+		 * {@link #defaultOptions(ChatOptions.Builder)}.
+		 * @param chatOptions the options to merge into the existing defaults
+		 * @return this builder
+		 * @see ChatOptions.Builder#combineWith(ChatOptions.Builder)
+		 */
+		Builder defaultOptionsMerge(ChatOptions.Builder chatOptions);
 
 		Builder defaultUser(String text);
 

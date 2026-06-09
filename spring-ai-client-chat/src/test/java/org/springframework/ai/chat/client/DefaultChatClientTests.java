@@ -2385,6 +2385,135 @@ class DefaultChatClientTests {
 		verify(provider, times(1)).getToolCallbacks();
 	}
 
+	// DefaultChatClientRequestSpec.merge / ChatClient.Builder.defaultOptionsMerge
+	// (Issue #5821)
+
+	@Test
+	void whenMergeOnEmptyOptionsCustomizerThenClonedCustomizerStored() {
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) new DefaultChatClientBuilder(
+				mockChatModel())
+			.build()
+			.prompt();
+
+		assertThat(spec.getOptionsCustomizer()).isNull();
+
+		ChatOptions.Builder<?> incoming = ChatOptions.builder().model("gpt-4o").temperature(0.5);
+		spec.merge(incoming);
+
+		// After merging into an empty customizer, the customizer holds the incoming
+		// values verbatim.
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-4o");
+		assertThat(stored.getTemperature()).isEqualTo(0.5);
+	}
+
+	@Test
+	void whenMergeWithOverriddenModelThenPriorFieldsPreserved() {
+		// Simulate auto-configured default options: model="gpt-4o", temperature=0.7,
+		// maxTokens=2048.
+		ChatOptions.Builder<?> existing = ChatOptions.builder().model("gpt-4o").temperature(0.7).maxTokens(2048);
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) new DefaultChatClientBuilder(
+				mockChatModel())
+			.defaultOptions(existing)
+			.build()
+			.prompt();
+
+		// Caller wants to override ONLY the model name (the bug scenario from #5821).
+		spec.merge(ChatOptions.builder().model("gpt-4.1-mini"));
+
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-4.1-mini"); // overridden
+		assertThat(stored.getTemperature()).isEqualTo(0.7); // preserved
+		assertThat(stored.getMaxTokens()).isEqualTo(2048); // preserved
+	}
+
+	@Test
+	void whenMergeWithNullFieldsThenExistingValuesRetained() {
+		ChatOptions.Builder<?> existing = ChatOptions.builder()
+			.model("gpt-4o")
+			.temperature(0.7)
+			.maxTokens(2048)
+			.topP(0.9);
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) new DefaultChatClientBuilder(
+				mockChatModel())
+			.defaultOptions(existing)
+			.build()
+			.prompt();
+
+		// Incoming customizer has NO fields set — all overrides should be no-ops.
+		spec.merge(ChatOptions.builder());
+
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-4o");
+		assertThat(stored.getTemperature()).isEqualTo(0.7);
+		assertThat(stored.getMaxTokens()).isEqualTo(2048);
+		assertThat(stored.getTopP()).isEqualTo(0.9);
+	}
+
+	@Test
+	void whenMergeWithConflictingValuesThenIncomingWins() {
+		ChatOptions.Builder<?> existing = ChatOptions.builder().model("gpt-4o").temperature(0.7);
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) new DefaultChatClientBuilder(
+				mockChatModel())
+			.defaultOptions(existing)
+			.build()
+			.prompt();
+
+		// Incoming sets BOTH fields, including a conflicting value for temperature.
+		spec.merge(ChatOptions.builder().model("gpt-4.1").temperature(0.2));
+
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-4.1");
+		assertThat(stored.getTemperature()).isEqualTo(0.2);
+	}
+
+	@Test
+	void whenDefaultOptionsMergeOnBuilderThenSpecCarriesMergedOptions() {
+		ChatOptions.Builder<?> existing = ChatOptions.builder().model("gpt-4o").temperature(0.7).maxTokens(2048);
+
+		ChatClient chatClient = new DefaultChatClientBuilder(mockChatModel()).defaultOptions(existing)
+			.defaultOptionsMerge(ChatOptions.builder().model("gpt-4.1-mini"))
+			.build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt();
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-4.1-mini"); // merged override
+		assertThat(stored.getTemperature()).isEqualTo(0.7); // preserved from
+															// defaultOptions
+		assertThat(stored.getMaxTokens()).isEqualTo(2048); // preserved from
+															// defaultOptions
+	}
+
+	@Test
+	void whenMergeIsCalledWithNullCustomizerThenThrow() {
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) new DefaultChatClientBuilder(
+				mockChatModel())
+			.build()
+			.prompt();
+
+		assertThatThrownBy(() -> spec.merge(null)).isInstanceOf(IllegalArgumentException.class)
+			.hasMessage("customizer cannot be null");
+	}
+
+	@Test
+	void whenDefaultOptionsThenExistingReplaceSemanticsPreserved() {
+		// Sanity check: the new merge() method does not change the behaviour of the
+		// existing defaultOptions() — it still replaces the prior customizer.
+		ChatOptions.Builder<?> first = ChatOptions.builder().model("gpt-4o").temperature(0.7);
+		ChatOptions.Builder<?> second = ChatOptions.builder().model("gpt-3.5-turbo");
+
+		ChatClient chatClient = new DefaultChatClientBuilder(mockChatModel()).defaultOptions(first)
+			.defaultOptions(second)
+			.build();
+
+		DefaultChatClient.DefaultChatClientRequestSpec spec = (DefaultChatClient.DefaultChatClientRequestSpec) chatClient
+			.prompt();
+		ChatOptions stored = spec.getOptionsCustomizer().build();
+		assertThat(stored.getModel()).isEqualTo("gpt-3.5-turbo");
+		assertThat(stored.getTemperature()).isNull(); // first was replaced, not merged
+	}
+
 	record Person(String name) {
 	}
 
