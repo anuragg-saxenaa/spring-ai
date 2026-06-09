@@ -1006,6 +1006,31 @@ public class SyncMcpResourceMethodCallbackTests {
 	}
 
 	@Test
+	public void testMethodInvocationErrorUsesInternalErrorCode() throws Exception {
+		// Regression test for issue #5812: runtime exceptions thrown from a
+		// @McpResource method body (NPE, IOException, etc.) must surface as
+		// JSON-RPC INTERNAL_ERROR (-32603), not INVALID_PARAMS (-32602).
+		// Per the MCP spec, -32602 means "bad method parameters" and only
+		// applies to parameter-shape errors caught before invocation.
+		TestResourceProvider provider = new TestResourceProvider();
+		Method method = TestResourceProvider.class.getMethod("getFailingResource", ReadResourceRequest.class);
+		McpResource resourceAnnotation = method.getAnnotation(McpResource.class);
+
+		BiFunction<McpSyncServerExchange, ReadResourceRequest, ReadResourceResult> callback = SyncMcpResourceMethodCallback
+			.builder()
+			.method(method)
+			.bean(provider)
+			.resource(ResourceAdapter.asResource(resourceAnnotation))
+			.build();
+
+		McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
+		ReadResourceRequest request = new ReadResourceRequest("failing-resource://resource");
+
+		assertThatThrownBy(() -> callback.apply(exchange, request)).isInstanceOf(McpError.class)
+			.satisfies(error -> assertThat(((McpError) error).getJsonRpcError().code()).isEqualTo(-32603));
+	}
+
+	@Test
 	public void testInvalidAsyncExchangeParameter() throws Exception {
 		TestResourceProvider provider = new TestResourceProvider();
 		Method method = TestResourceProvider.class.getMethod("invalidAsyncExchangeParameter",
